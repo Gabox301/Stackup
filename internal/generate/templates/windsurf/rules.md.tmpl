@@ -1,0 +1,20 @@
+# Stackup rules for Windsurf ({{ .StackList }})
+
+Fallback mirror of `.devin/rules/stackup.md` for Windsurf.
+
+## Detected stacks
+
+| Ecosystem | Confidence | Signals | Version | Package manager |
+|-----------|------------|---------|---------|-----------------|
+{{- range .Stacks }}
+| {{ .Ecosystem }} | {{ .Confidence }} | {{ .Signals }} | {{ .VersionHint }} | {{ .PackageManager }} |{{- end }}
+{{- if .Generic }}
+
+No supported stacks detected. Re-run `stackup detect` after adding a
+manifest, or keep these generic rules.{{- end }}
+
+## Scope notes
+
+- Windsurf Cascade reads MCP from the global
+  `~/.codeium/windsurf/mcp_config.json` only; this project-local fallback
+  does not configure Cascade MCP.

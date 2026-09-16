@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [{{- $first := true }}{{- if .HasNode }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Program",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/index.js"
+    }{{- end }}{{- if .HasGo }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}
+    {
+      "type": "go",
+      "request": "launch",
+      "name": "Launch Package",
+      "mode": "auto",
+      "program": "${workspaceFolder}"
+    }{{- end }}{{- if .HasPython }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Python: Current File",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    }{{- end }}{{- if .HasRust }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Binary",
+      "cargo": {
+        "args": ["build"]
+      }
+    }{{- end }}
+  ]
+}

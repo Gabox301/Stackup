@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "user.only-extension",
+    "dbaeumer.vscode-eslint",
+    "golang.go"
+  ]
+}

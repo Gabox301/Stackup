@@ -1,0 +1,14 @@
+# Stackup rules for Devin (node)
+
+Project scope. These rules travel with the repository under `.devin/rules/`.
+
+## Detected stacks
+
+| Ecosystem | Confidence | Signals | Version | Package manager |
+|-----------|------------|---------|---------|-----------------|
+| node | high | package.json, package-lock.json | >=20 | npm |
+
+## Scope notes
+
+- `.devin/mcp_config.json` configures MCP for Devin CLI runs (project scope).
+- The `.windsurf/rules/` fallback mirrors these rules for Windsurf.

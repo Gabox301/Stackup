@@ -1,0 +1,32 @@
+# Binaries and release artifacts
+/stackup
+/stackup.exe
+*.exe
+dist/
+
+# Go test and coverage output
+*.test
+*.out
+coverage.*
+*.coverprofile
+
+# Editor and IDE settings (project fixtures under testdata stay tracked)
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Dependency caches
+node_modules/
+
+# Build outputs inside detect fixtures (dotnet, gradle)
+**/obj/
+**/bin/
+**/.gradle/
+
+# Local tool
+.atl

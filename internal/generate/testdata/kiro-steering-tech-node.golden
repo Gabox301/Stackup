@@ -1,0 +1,12 @@
+# Tech steering (node)
+
+Stack, tooling, and commands agents should prefer.
+
+## Detected stacks
+
+| Ecosystem | Confidence | Signals | Version | Package manager |
+|-----------|------------|---------|---------|-----------------|
+| node | high | package.json, package-lock.json | >=20 | npm |
+
+- Node: prefer `npm` scripts (`npm run build`, `npm test`) unless the
+  lockfile names another manager.

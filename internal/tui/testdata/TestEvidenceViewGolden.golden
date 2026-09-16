@@ -1,0 +1,13 @@
+            __                       __                      
+   _____   / /_   ____ _   _____    / /__   __  __     ____  
+  / ___/  / __/  / __ `/  / ___/   / //_/  / / / /    / __ \ 
+ (__  )  / /_   / /_/ /  / /__    / ,<    / /_/ /    / /_/ / 
+/____/   \__/   \__,_/   \___/   /_/|_|   \__,_/    / .___/  
+                                                   /_/       
+
+Stackup detect
+Detected stacks
+
+> node: high (signals: package.json, package-lock.json) pm=npm version=>=20
+
+q quit · up/down move

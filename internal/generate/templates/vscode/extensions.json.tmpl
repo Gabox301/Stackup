@@ -1,0 +1,5 @@
+{
+  "recommendations": [{{- range $i, $ext := .Extensions }}{{ if $i }},{{ end }}
+    "{{ $ext }}"{{- end }}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "demo-bun",
+  "version": "1.0.0",
+  "packageManager": "npm@10.2.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

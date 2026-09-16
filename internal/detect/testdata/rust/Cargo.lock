@@ -1,0 +1,2 @@
+# demo cargo lockfile fixture (presence alone drives confidence)
+version = 3

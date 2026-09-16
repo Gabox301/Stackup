@@ -1,0 +1,57 @@
+# Tech steering ({{ .StackList }})
+
+Stack, tooling, and commands agents should prefer.
+
+## Detected stacks
+
+| Ecosystem | Confidence | Signals | Version | Package manager |
+|-----------|------------|---------|---------|-----------------|
+{{- range .Stacks }}
+| {{ .Ecosystem }} | {{ .Confidence }} | {{ .Signals }} | {{ .VersionHint }} | {{ .PackageManager }} |{{- end }}
+{{- if .Generic }}
+
+No supported stacks detected. Re-run `stackup detect` after adding a
+manifest.{{- end }}
+{{- if .HasNode }}
+
+- Node: prefer `npm` scripts (`npm run build`, `npm test`) unless the
+  lockfile names another manager.{{- end }}
+{{- if .HasGo }}
+
+- Go: `go build ./...`, `go test ./...`, `gofmt -l .`, `go vet ./...`.{{- end }}
+{{- if .HasPython }}
+
+- Python: use the project virtualenv (`.venv`) and `python -m pytest`.{{- end }}
+{{- if .HasRust }}
+
+- Rust: `cargo build`, `cargo test`, `cargo clippy`.{{- end }}
+{{- if .HasCSharp }}
+
+- C#: install `ms-dotnettools.csharp` for C# language support.{{- end }}
+{{- if .HasJava }}
+
+- Java: install `redhat.java` for Java language support.{{- end }}
+{{- if .HasRuby }}
+
+- Ruby: install `Shopify.ruby-lsp` for Ruby language support.{{- end }}
+{{- if .HasErlang }}
+
+- Erlang: install `pgourlain.erlang` for Erlang language support.{{- end }}
+{{- if .HasBun }}
+
+- Bun: install `oven.bun-vscode` for Bun runtime support.{{- end }}
+{{- if contains .Frameworks "vue" }}
+
+- Vue: install `Vue.volar` for Vue support.{{- end }}
+{{- if contains .Frameworks "nuxt" }}
+
+- Nuxt: install `Vue.volar` for Vue support.{{- end }}
+{{- if contains .Frameworks "svelte" }}
+
+- Svelte: install `svelte.svelte-vscode` for Svelte support.{{- end }}
+{{- if contains .Frameworks "sveltekit" }}
+
+- SvelteKit: install `svelte.svelte-vscode` for Svelte support.{{- end }}
+{{- if contains .Frameworks "astro" }}
+
+- Astro: install `astro-build.astro-vscode` for Astro support.{{- end }}

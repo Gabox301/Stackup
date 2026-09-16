@@ -1,0 +1,13 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true{{- if .HasNode }},
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "eslint.enable": true{{- end }}{{- if .HasGo }},
+  "go.useLanguageServer": true,
+  "go.lintTool": "staticcheck"{{- end }}{{- if .HasPython }},
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.testing.pytestEnabled": true{{- end }}{{- if .HasRust }},
+  "rust-analyzer.check.command": "clippy"{{- end }}
+}

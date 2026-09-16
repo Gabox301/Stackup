@@ -1,0 +1,8 @@
+{
+  // Project editor settings; stackup must keep this comment.
+  "editor.formatOnSave": false, // user prefers manual formatting
+  "editor.tabSize": 4,
+  "custom.userKey": "keep-me",
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true
+}

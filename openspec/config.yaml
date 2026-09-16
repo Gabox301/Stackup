@@ -1,0 +1,48 @@
+schema: spec-driven
+project: stackup
+
+context: |
+  Tech stack: Go 1.27.1 CLI, greenfield (no go.mod yet).
+  Architecture: standard Go CLI layout (cmd/, internal/); TUI library TBD in explore/propose.
+  Testing: stdlib go test; quality via gofmt, go vet, golangci-lint.
+  Style: English artifacts; conventional commits; no Co-Authored-By trailers.
+  Scope: stack detection (Node, Go, Python, Rust, etc. TBD) + IDE configs (vscode, cursor, devin, kiro); TUI preferred.
+
+# Zero in-scope projects discovered (empty workdir, bounded scan root + 2 levels).
+# No explicit workspace-level test command exists, so strict_tdd resolves to false
+# per the no-runner fallback. Once go.mod exists, the intended local command is `go test ./...`.
+strict_tdd: false
+
+projects: []
+
+testing:
+  workspace_test_command: ""
+  coverage_threshold: 0
+  projects: []
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Preserve IDE names as stated (vscode, cursor, devin, kiro) until explore/propose clarifies them
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+    - No TUI library decision in init; decide in explore/propose (candidates only as observation)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns
+      - Standard Go layout (cmd/, internal/); gofmt clean; go vet clean
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: "go build ./..."
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

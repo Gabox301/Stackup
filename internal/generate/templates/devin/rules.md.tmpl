@@ -1,0 +1,49 @@
+# Stackup rules for Devin ({{ .StackList }})
+
+Project scope. These rules travel with the repository under `.devin/rules/`.
+
+## Detected stacks
+
+| Ecosystem | Confidence | Signals | Version | Package manager |
+|-----------|------------|---------|---------|-----------------|
+{{- range .Stacks }}
+| {{ .Ecosystem }} | {{ .Confidence }} | {{ .Signals }} | {{ .VersionHint }} | {{ .PackageManager }} |{{- end }}
+{{- if .Generic }}
+
+No supported stacks detected. Re-run `stackup detect` after adding a
+manifest, or keep these generic rules.{{- end }}
+
+## Scope notes
+
+- `.devin/mcp_config.json` configures MCP for Devin CLI runs (project scope).
+- The `.windsurf/rules/` fallback mirrors these rules for Windsurf.
+{{- if .HasCSharp }}
+
+C# tooling: install `ms-dotnettools.csharp` for C# language support.{{- end }}
+{{- if .HasJava }}
+
+Java tooling: install `redhat.java` for Java language support.{{- end }}
+{{- if .HasRuby }}
+
+Ruby tooling: install `Shopify.ruby-lsp` for Ruby language support.{{- end }}
+{{- if .HasErlang }}
+
+Erlang tooling: install `pgourlain.erlang` for Erlang language support.{{- end }}
+{{- if .HasBun }}
+
+Bun runtime: install `oven.bun-vscode` for Bun support.{{- end }}
+{{- if contains .Frameworks "vue" }}
+
+Vue framework: install `Vue.volar` for Vue support.{{- end }}
+{{- if contains .Frameworks "nuxt" }}
+
+Nuxt framework: install `Vue.volar` for Vue support.{{- end }}
+{{- if contains .Frameworks "svelte" }}
+
+Svelte framework: install `svelte.svelte-vscode` for Svelte support.{{- end }}
+{{- if contains .Frameworks "sveltekit" }}
+
+SvelteKit framework: install `svelte.svelte-vscode` for Svelte support.{{- end }}
+{{- if contains .Frameworks "astro" }}
+
+Astro framework: install `astro-build.astro-vscode` for Astro support.{{- end }}
