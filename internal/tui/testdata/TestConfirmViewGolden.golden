@@ -14,4 +14,4 @@ Files to write
   .vscode/launch.json (new)
   .vscode/tasks.json (new)
 
-y apply · n abort · up/down move · enter apply
+y apply · n abort (q/Q/esc/ctrl+c) · up/down move · enter apply

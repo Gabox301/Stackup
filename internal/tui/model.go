@@ -22,15 +22,16 @@ var ascii = lipgloss.NewRenderer(io.Discard, termenv.WithProfile(termenv.Ascii))
 
 // Model is the Bubble Tea screen over one Input payload.
 //
-// ScreenConfirm keeps the original dialog: y applies, n/q/esc aborts,
-// up/k and down/j move the highlight, enter applies. An undecided
+// ScreenConfirm keeps the original dialog: y applies, n/N/q/Q/esc/ctrl+c
+// aborts, up/k and down/j move the highlight, enter applies. An undecided
 // shutdown (EOF, closed input) reads as Abort, so the dialog can never
 // confirm by accident.
 //
-// ScreenPlan is the generate write gate with the same keys: y writes,
-// n/q/esc aborts, up/k and down/j move the highlight, enter writes.
+// ScreenPlan is the generate gate with the same keys: y/enter confirms,
+// n/N/q/Q/esc/ctrl+c aborts, up/k and down/j move the highlight.
 // An undecided shutdown reads as Abort, so the gate can never write
-// by accident.
+// by accident. The footer says "confirm", never "write": the dry-run
+// leg shows this same screen with zero writes.
 //
 // Presence screens (evidence, diff, result) are read-only: any quit
 // key leaves Decided set with apply false, so Decision stays Abort
@@ -48,6 +49,10 @@ type Model struct {
 	written     apply.Result
 	diffIndex   int
 	viewport    viewport.Model
+	// width is the last WindowSizeMsg width, or 0 when no size arrived
+	// yet. It drives the narrow-terminal truncate policy (see clipLines);
+	// 0 clips nothing so constructor output stays byte-identical.
+	width int
 	// theme owns the screen styles. The zero value renders Ascii
 	// (see currentTheme); only the runtime launcher injects a
 	// renderer, so constructors keep their signatures and output.
@@ -172,11 +177,12 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update implements tea.Model. WindowSizeMsg resizes the diff viewport
-// and is ignored on every other screen: those layouts are plain lines
-// that need no reflow.
+// Update implements tea.Model. WindowSizeMsg records the width for the
+// narrow truncate policy on every screen and resizes the diff viewport;
+// other screens need no reflow beyond clipping.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = size.Width
 		if m.screen == ScreenDiff {
 			m.viewport.Width = m.diffWidth(size.Width)
 			m.viewport.Height = max(size.Height-10-m.bannerHeight(), 1)
@@ -199,15 +205,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updateConfirm handles the confirm dialog and plan gate keys verbatim:
-// y applies/writes, n/q/esc aborts, up/k and down/j move the highlight,
-// enter applies/writes. Deciding keys quit the program so Run returns
-// the answer.
+// y confirms/applies, n/N/q/Q/esc/ctrl+c aborts, up/k and down/j move
+// the highlight, enter confirms/applies. Deciding keys quit the program
+// so Run returns the answer.
 func updateConfirm(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "y", "Y", "enter":
 		m.decided, m.apply = true, true
 		return m, tea.Quit
-	case "n", "N", "q", "esc", "ctrl+c":
+	case "n", "N", "q", "Q", "esc", "ctrl+c":
 		m.decided = true
 		return m, tea.Quit
 	case "up", "k":
@@ -224,25 +230,38 @@ func updateConfirm(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// presenceTop reports the last selectable row on presence screens, or
+// -1 when the screen shows no marker (result always, evidence when
+// empty): navigation stays frozen there so no invisible state mutates.
+func (m Model) presenceTop() int {
+	if m.screen == ScreenEvidence {
+		return len(m.evidence) - 1
+	}
+	return len(m.files) - 1
+}
+
 // updatePresence handles read-only screens (evidence, result):
 // navigation moves the highlight, every quit key (including y/n/enter)
-// quits as Abort so presence can never imply consent.
+// quits as Abort so presence can never imply consent. On marker-less
+// screens the cursor is frozen: up/down leave the model untouched.
 func updatePresence(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "y", "Y", "n", "N", "q", "Q", "enter", "esc", "ctrl+c":
 		m.decided = true
 		return m, tea.Quit
 	case "up", "k":
+		if m.presenceTop() < 0 {
+			return m, nil
+		}
 		if m.cursor > 0 {
 			m.cursor--
 		}
 		return m, nil
 	case "down", "j":
-		top := len(m.files) - 1
-		if m.screen == ScreenEvidence {
-			top = len(m.evidence) - 1
+		if m.presenceTop() < 0 {
+			return m, nil
 		}
-		if m.cursor < top {
+		if m.cursor < m.presenceTop() {
 			m.cursor++
 		}
 		return m, nil
@@ -278,7 +297,7 @@ func (m Model) viewConfirm() string {
 		}
 		rows = append(rows, row)
 	}
-	return m.compose("Stackup apply", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "y apply · n abort · up/down move · enter apply")
+	return m.compose("Stackup apply", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "y apply · n abort (q/Q/esc/ctrl+c) · up/down move · enter apply")
 }
 
 // viewEvidence renders one row per finding with the same wording as
@@ -300,9 +319,11 @@ func (m Model) viewEvidence() string {
 	return m.compose("Stackup detect", "", "Detected stacks", rows, "q quit · up/down move")
 }
 
-// viewPlan renders the generate write gate with confirm wording. Only
-// an explicit y/enter returns Apply and lets the caller write; n/q/esc
-// aborts with zero writes.
+// viewPlan renders the generate gate with confirm wording. Only an
+// explicit y/enter returns Apply and lets the caller write; n/N/q/Q/esc/
+// ctrl+c aborts with zero writes. The footer says "confirm", never
+// "write": the dry-run leg shows this same screen and writes nothing,
+// so the footer must not promise writes on either leg.
 func (m Model) viewPlan() string {
 	rows := make([]string, 0, len(m.files))
 	for i, path := range m.files {
@@ -312,7 +333,7 @@ func (m Model) viewPlan() string {
 		}
 		rows = append(rows, row)
 	}
-	return m.compose("Stackup generate", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "y write · n abort · up/down move · enter write")
+	return m.compose("Stackup generate", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "y confirm · n abort (q/Q/esc/ctrl+c) · up/down move · enter confirm")
 }
 
 // viewResult renders the apply write summary with the same lines as

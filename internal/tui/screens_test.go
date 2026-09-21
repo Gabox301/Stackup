@@ -216,10 +216,13 @@ func TestPlanViewKeepsConfirmWording(t *testing.T) {
 
 	plan := vscodePlan(t)
 	view := stripANSI(tui.NewPlanModel(plan, []string{".vscode/settings.json"}).View())
-	for _, want := range []string{"Stackup generate", "4 files:", "3 new, 1 overwrite", ".vscode/settings.json (overwrite)", "y write · n abort", "enter write"} {
+	for _, want := range []string{"Stackup generate", "4 files:", "3 new, 1 overwrite", ".vscode/settings.json (overwrite)", "y confirm · n abort", "q/Q/esc/ctrl+c", "enter confirm"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plan View() missing %q:\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "y write") || strings.Contains(view, "enter write") {
+		t.Errorf("dry-run plan View() promises a write in its footer, want confirm wording:\n%s", view)
 	}
 }
 

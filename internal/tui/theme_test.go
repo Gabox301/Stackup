@@ -345,7 +345,7 @@ func TestStyledStrippedMatchesAscii(t *testing.T) {
 		{
 			"plan",
 			NewPlanModel(twoFilePlan(), []string{".vscode/settings.json"}),
-			[]string{"Stackup generate", "Files to write", "2 files:", "1 new, 1 overwrite", "(overwrite)", "(new)", "y write · n abort", "enter write"},
+			[]string{"Stackup generate", "Files to write", "2 files:", "1 new, 1 overwrite", "(overwrite)", "(new)", "y confirm · n abort", "q/Q/esc/ctrl+c", "enter confirm"},
 		},
 		{
 			"result",
