@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 
-	"stackup/internal/apply"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 // TestConfirmInteractiveApplies drives the real Bubble Tea program

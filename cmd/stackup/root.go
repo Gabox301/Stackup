@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 // Exit codes for the stackup CLI tree.

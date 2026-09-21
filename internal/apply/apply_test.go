@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"stackup/internal/apply"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 // vscodePlan builds the deterministic generic vscode plan (4 JSON files).

@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"stackup/internal/apply"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 func newGenerateCommand(shared *sharedOpts) *cobra.Command {

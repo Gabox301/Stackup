@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 // runCLI executes the Cobra tree with args and returns stdout, stderr,

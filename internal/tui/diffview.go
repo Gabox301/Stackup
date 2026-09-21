@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/diff"
 )
 
 // Diff viewport defaults. They keep the first render deterministic;

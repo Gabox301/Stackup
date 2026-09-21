@@ -17,8 +17,8 @@ import (
 
 	"github.com/tailscale/hujson"
 
-	"stackup/internal/generate"
-	"stackup/internal/merge"
+	"github.com/Gabox301/Stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/merge"
 )
 
 // Options tunes how desired bytes are resolved.

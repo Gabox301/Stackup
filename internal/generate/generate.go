@@ -15,7 +15,7 @@ import (
 	"strings"
 	"text/template"
 
-	"stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/detect"
 )
 
 //go:embed templates

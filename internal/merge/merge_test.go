@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stackup/internal/merge"
+	"github.com/Gabox301/Stackup/internal/merge"
 )
 
 var update = flag.Bool("update", false, "update golden files")

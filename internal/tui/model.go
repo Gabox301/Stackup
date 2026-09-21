@@ -10,10 +10,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 // ascii renders screens without ANSI escapes, so piped output and

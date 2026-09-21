@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/detect"
 )
 
 // copyFixture copies internal/detect/testdata/<name> into a fresh TempDir.

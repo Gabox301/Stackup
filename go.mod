@@ -1,4 +1,4 @@
-module stackup
+module github.com/Gabox301/Stackup
 
 go 1.27.1
 
