@@ -23,6 +23,25 @@ go install ./cmd/stackup
 go build -o stackup ./cmd/stackup
 ```
 
+#### Prebuilt binaries
+
+Download the archive matching your OS and architecture from
+[GitHub Releases](https://github.com/Gabox301/Stackup/releases):
+
+| OS | Architecture | Example file |
+| --- | --- | --- |
+| Windows | x86_64 (amd64) | `stackup_0.1.0_Windows_x86_64.zip` |
+| Linux | x86_64 (amd64) | `stackup_0.1.0_Linux_x86_64.tar.gz` |
+| Linux | arm64 | `stackup_0.1.0_Linux_arm64.tar.gz` |
+| macOS | x86_64 (amd64) | `stackup_0.1.0_Darwin_x86_64.tar.gz` |
+| macOS | arm64 | `stackup_0.1.0_Darwin_arm64.tar.gz` |
+
+Or install the latest release with Go (requires Go 1.27.1+):
+
+```sh
+go install github.com/Gabox301/Stackup/cmd/stackup@latest
+```
+
 ### Quickstart
 
 ```sh
@@ -194,6 +213,25 @@ Requiere Go 1.27.1+.
 go install ./cmd/stackup
 # o compilar localmente
 go build -o stackup.exe ./cmd/stackup
+```
+
+#### Binarios precompilados
+
+Descargá el archivo correspondiente a tu sistema operativo y arquitectura desde
+[GitHub Releases](https://github.com/Gabox301/Stackup/releases):
+
+| SO | Arquitectura | Archivo de ejemplo |
+| --- | --- | --- |
+| Windows | x86_64 (amd64) | `stackup_0.1.0_Windows_x86_64.zip` |
+| Linux | x86_64 (amd64) | `stackup_0.1.0_Linux_x86_64.tar.gz` |
+| Linux | arm64 | `stackup_0.1.0_Linux_arm64.tar.gz` |
+| macOS | x86_64 (amd64) | `stackup_0.1.0_Darwin_x86_64.tar.gz` |
+| macOS | arm64 | `stackup_0.1.0_Darwin_arm64.tar.gz` |
+
+O instalá la última versión con Go (requiere Go 1.27.1+):
+
+```sh
+go install github.com/Gabox301/Stackup/cmd/stackup@latest
 ```
 
 ### Inicio rápido

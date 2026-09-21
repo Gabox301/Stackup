@@ -1,6 +1,6 @@
 package tui
 
-import "stackup/internal/generate"
+import "github.com/Gabox301/Stackup/internal/generate"
 
 // StubLauncher answers every Run with a canned Action. Tests swap the
 // real Bubble Tea launcher for it to prove the TUI boundary keeps the

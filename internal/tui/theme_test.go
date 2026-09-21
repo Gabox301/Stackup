@@ -9,10 +9,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 // TestAsciiThemeRendersWithoutEscapes pins the slice-1 contract:

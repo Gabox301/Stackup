@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"stackup/internal/detect"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 func newDetectCommand(shared *sharedOpts) *cobra.Command {

@@ -3,9 +3,9 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"stackup/internal/diff"
-	"stackup/internal/generate"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 func newDiffCommand(shared *sharedOpts) *cobra.Command {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"stackup/internal/detect"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 var update = flag.Bool("update", false, "update golden files")

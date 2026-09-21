@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"stackup/internal/apply"
-	"stackup/internal/diff"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 // twoFilePreview builds a deterministic diff preview with one new and

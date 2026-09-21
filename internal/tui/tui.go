@@ -7,10 +7,10 @@
 package tui
 
 import (
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 // Action is the user's answer to the apply confirmation. Only the

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 // TestDetectPresentsEvidenceScreen proves compute-then-present for detect:

@@ -16,8 +16,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"stackup/internal/diff"
-	"stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
 )
 
 // Options tunes an apply run.

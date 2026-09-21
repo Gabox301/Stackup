@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
 )
 
 // ansi256Theme binds the full style set to a fixed color renderer so

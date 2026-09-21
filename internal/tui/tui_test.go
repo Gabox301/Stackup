@@ -10,11 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/teatest"
 
-	"stackup/internal/apply"
-	"stackup/internal/detect"
-	"stackup/internal/diff"
-	"stackup/internal/generate"
-	"stackup/internal/tui"
+	"github.com/Gabox301/Stackup/internal/apply"
+	"github.com/Gabox301/Stackup/internal/detect"
+	"github.com/Gabox301/Stackup/internal/diff"
+	"github.com/Gabox301/Stackup/internal/generate"
+	"github.com/Gabox301/Stackup/internal/tui"
 )
 
 func nodeEvidence() []detect.Evidence {
