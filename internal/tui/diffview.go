@@ -173,5 +173,9 @@ func renderDiff(m Model) string {
 	lines = append(lines, "")
 	lines = append(lines, m.diffFooter(m.preview.HasChanges()))
 	output := strings.Join(m.boxed(lines), "\n")
-	return strings.Join(Banner, "\n") + "\n\n" + output + "\n"
+	all := append([]string{}, Banner...)
+	all = append(all, "")
+	all = append(all, strings.Split(output, "\n")...)
+	all = append(all, "")
+	return strings.Join(m.clipLines(all), "\n")
 }

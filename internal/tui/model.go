@@ -49,6 +49,10 @@ type Model struct {
 	written     apply.Result
 	diffIndex   int
 	viewport    viewport.Model
+	// width is the last WindowSizeMsg width, or 0 when no size arrived
+	// yet. It drives the narrow-terminal truncate policy (see clipLines);
+	// 0 clips nothing so constructor output stays byte-identical.
+	width int
 	// theme owns the screen styles. The zero value renders Ascii
 	// (see currentTheme); only the runtime launcher injects a
 	// renderer, so constructors keep their signatures and output.
@@ -173,11 +177,12 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update implements tea.Model. WindowSizeMsg resizes the diff viewport
-// and is ignored on every other screen: those layouts are plain lines
-// that need no reflow.
+// Update implements tea.Model. WindowSizeMsg records the width for the
+// narrow truncate policy on every screen and resizes the diff viewport;
+// other screens need no reflow beyond clipping.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = size.Width
 		if m.screen == ScreenDiff {
 			m.viewport.Width = m.diffWidth(size.Width)
 			m.viewport.Height = max(size.Height-10-m.bannerHeight(), 1)
