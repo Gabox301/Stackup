@@ -89,6 +89,7 @@ func TestConfirmKeysDecide(t *testing.T) {
 		keyRunes("n"),
 		keyRunes("N"),
 		keyRunes("q"),
+		keyRunes("Q"),
 		keyType(tea.KeyEsc),
 		keyType(tea.KeyCtrlC),
 	}
@@ -234,6 +235,7 @@ func TestPlanKeysDecide(t *testing.T) {
 		keyRunes("n"),
 		keyRunes("N"),
 		keyRunes("q"),
+		keyRunes("Q"),
 		keyType(tea.KeyEsc),
 		keyType(tea.KeyCtrlC),
 	}

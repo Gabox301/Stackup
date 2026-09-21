@@ -74,7 +74,7 @@ func (m Model) diffFooter(hasChanges bool) string {
 	th := m.currentTheme()
 	return th.Footer.Render("changes pending — ") +
 		th.FooterEmph.Render("exit 2") +
-		th.Footer.Render(" · q quit · up/down select file")
+		th.Footer.Render(" · q quit · up/down select file · J/K scroll")
 }
 
 // diffTag words one selector row. Every tag is wrapped whole: (new)
@@ -93,8 +93,11 @@ func (m Model) diffTag(f diff.FileDiff) string {
 }
 
 // updateDiff moves the file selector on up/k and down/j, scrolls the
-// viewport on any other viewport key, and quits read-only on every
-// quit key (including y/n/enter) as Abort.
+// viewport one line on J/K, and quits read-only on every quit key
+// (including y/n/enter) as Abort. up/down stay on the selector (the
+// viewport's own line keys), so J/K are the explicit line-scroll
+// bindings; page keys (pgup/pgdn/space/f/b/u/d/ctrl+u/ctrl+d) keep
+// reaching the viewport through the fallthrough below.
 func updateDiff(m Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
@@ -114,6 +117,12 @@ func updateDiff(m Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(diffContent(m))
 				m.viewport.GotoTop()
 			}
+			return m, nil
+		case "J":
+			m.viewport.ScrollDown(1)
+			return m, nil
+		case "K":
+			m.viewport.ScrollUp(1)
 			return m, nil
 		}
 	}
