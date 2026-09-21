@@ -49,30 +49,106 @@ type Result struct {
 	DryRun bool
 }
 
+// ApplyError reports a mid-plan write failure with the failure manifest:
+// what was already written, what failed and why, and what never started.
+// Pre-validation (see validatePlan) catches every detectable failure with
+// zero writes; ApplyError is the backstop for failures that only surface
+// mid-plan (I/O errors, vanished directories, permission changes between
+// validation and write). There is no auto-rollback: the per-file .bak
+// backups recorded in Backups are the recovery story.
+type ApplyError struct {
+	// Applied lists relative paths written before the failure, plan order.
+	Applied []string
+	// Backups maps each overwritten path in Applied to its timestamped
+	// backup relative path. Fresh files have no entry.
+	Backups map[string]string
+	// Failed is the relative path whose write aborted the run.
+	Failed string
+	// Cause is the underlying write failure.
+	Cause error
+	// Pending lists relative paths never attempted, in plan order.
+	Pending []string
+}
+
+// Error preserves the underlying write failure text so callers matching
+// on today's messages see no change; the manifest travels on the typed
+// error itself (use errors.As to read it).
+func (e *ApplyError) Error() string {
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
+	return "apply: write " + e.Failed + ": unknown error"
+}
+
+// Unwrap exposes the underlying write failure.
+func (e *ApplyError) Unwrap() error { return e.Cause }
+
 // timeFormat stamps backups without characters illegal on Windows.
 const timeFormat = "20060102-150405"
 
-// Apply resolves p against root and writes pending files. Existing files
-// are backed up before any write; a backup failure aborts the run before
+// Filesystem seams for failure-injection tests. Production always uses
+// the os defaults; white-box tests stub writeFileFunc to force a
+// deterministic mid-plan failure without relying on OS permission bits
+// (unreliable on Windows and when running as root/administrator).
+var (
+	mkdirAllFunc  = os.MkdirAll
+	writeFileFunc = os.WriteFile
+	chmodFunc     = os.Chmod
+)
+
+// Apply resolves p against root and writes pending files. The whole plan
+// is resolved (diff.Compute) and pre-validated (validatePlan) BEFORE the
+// first write, so anything detectable fails with zero writes. A failure
+// that still surfaces mid-plan aborts the run and returns an *ApplyError
+// carrying the applied[]/failed/pending[] manifest. Existing files are
+// backed up before any write; a backup failure aborts the run before
 // the corresponding write. DryRun returns the pending set and writes
-// nothing.
+// nothing (validation is skipped: there is nothing to protect).
 func Apply(root string, p generate.Plan, opts Options) (Result, error) {
 	preview, err := diff.Compute(root, p, diff.Options{Force: opts.Force})
 	if err != nil {
 		return Result{}, err
 	}
 	res := Result{Backups: map[string]string{}, DryRun: opts.DryRun}
+	var changed []diff.FileDiff
 	for _, fd := range preview.Files {
 		if !fd.Changed {
 			continue
 		}
-		if opts.DryRun {
+		changed = append(changed, fd)
+	}
+	if opts.DryRun {
+		for _, fd := range changed {
 			res.Written = append(res.Written, fd.Path)
-			continue
 		}
+		return res, nil
+	}
+	// Resolve-then-commit: the ENTIRE plan validates before the first
+	// byte is written. A validation failure returns a plain error with
+	// zero writes (no manifest: nothing was applied, nothing is pending
+	// beyond the whole plan).
+	if err := validatePlan(root, changed); err != nil {
+		return Result{}, err
+	}
+	for i, fd := range changed {
 		backup, err := writeOne(root, fd)
 		if err != nil {
-			return Result{}, err
+			applied := append([]string{}, res.Written...)
+			backups := make(map[string]string, len(res.Backups))
+			for k, v := range res.Backups {
+				backups[k] = v
+			}
+			var pending []string
+			for _, rest := range changed[i+1:] {
+				pending = append(pending, rest.Path)
+			}
+			return Result{}, &ApplyError{
+				Applied: applied,
+				Backups: backups,
+				Failed:  fd.Path,
+				Cause:   err,
+				Pending: pending,
+			}
 		}
 		res.Written = append(res.Written, fd.Path)
 		if backup != "" {
@@ -80,6 +156,66 @@ func Apply(root string, p generate.Plan, opts Options) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// validatePlan checks every pending write before the first one happens:
+// each target must be readable (or absent) and regular, and each parent
+// directory must exist as a writable directory or be creatable under a
+// writable existing ancestor. Any failure aborts with zero writes.
+func validatePlan(root string, changed []diff.FileDiff) error {
+	if len(changed) == 0 {
+		return nil
+	}
+	if fi, err := os.Stat(root); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("apply: stat %s: %w", root, err)
+		}
+		// Missing root is creatable: the per-file parent checks below
+		// verify the nearest existing ancestor is a writable directory.
+	} else if !fi.IsDir() {
+		return fmt.Errorf("apply: %s: not a directory", root)
+	}
+	for _, fd := range changed {
+		abs := filepath.Join(root, filepath.FromSlash(fd.Path))
+		if _, _, _, err := readExisting(abs, fd.Path); err != nil {
+			return err
+		}
+		if err := validateParentDir(abs, fd.Path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateParentDir ensures the parent of a pending target either exists
+// as a writable directory or can be created under the nearest existing
+// ancestor (which must itself be a writable directory). A file blocking
+// the path fails instead of surfacing later as a half-written plan.
+// Writability is judged by permission bits (any of owner/group/other
+// write): a portable, side-effect-free check. ACLs, quotas, and disk-full
+// cannot be detected this way and remain mid-plan manifest cases.
+func validateParentDir(abs, rel string) error {
+	cur := filepath.Dir(abs)
+	for {
+		fi, err := os.Stat(cur)
+		if err == nil {
+			if !fi.IsDir() {
+				return fmt.Errorf("apply: parent of %s: %s is not a directory", rel, cur)
+			}
+			if fi.Mode().Perm()&0o222 == 0 {
+				return fmt.Errorf("apply: parent of %s: directory %s is not writable", rel, cur)
+			}
+			return nil
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("apply: stat %s: %w", cur, err)
+		}
+		up := filepath.Dir(cur)
+		if up == cur {
+			return fmt.Errorf("apply: parent of %s: no creatable directory", rel)
+		}
+		cur = up
+	}
 }
 
 // writeOne backs up an existing target and writes the resolved bytes,
@@ -94,7 +230,7 @@ func writeOne(root string, fd diff.FileDiff) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	if err := mkdirAllFunc(filepath.Dir(abs), 0o755); err != nil {
 		return "", fmt.Errorf("apply: create parent of %s: %w", fd.Path, err)
 	}
 	var backup string
@@ -108,14 +244,14 @@ func writeOne(root string, fd diff.FileDiff) (string, error) {
 	if ok {
 		perm = mode
 	}
-	if err := os.WriteFile(abs, fd.Content, perm); err != nil {
+	if err := writeFileFunc(abs, fd.Content, perm); err != nil {
 		return "", fmt.Errorf("apply: write %s: %w", fd.Path, err)
 	}
 	if ok {
 		// WriteFile applies perm only on creation; truncating an
 		// existing file keeps whatever mode it had, so enforce the
 		// captured source mode explicitly.
-		if err := os.Chmod(abs, mode); err != nil {
+		if err := chmodFunc(abs, mode); err != nil {
 			return "", fmt.Errorf("apply: preserve mode of %s: %w", fd.Path, err)
 		}
 	}
@@ -169,10 +305,10 @@ func backupFile(root, abs string, original []byte, mode os.FileMode) (string, er
 		}
 		candidate = fmt.Sprintf("%s.bak.%s-%d", abs, stamp, i)
 	}
-	if err := os.WriteFile(candidate, original, mode); err != nil {
+	if err := writeFileFunc(candidate, original, mode); err != nil {
 		return "", fmt.Errorf("apply: write backup: %w", err)
 	}
-	if err := os.Chmod(candidate, mode); err != nil {
+	if err := chmodFunc(candidate, mode); err != nil {
 		return "", fmt.Errorf("apply: preserve mode of backup: %w", err)
 	}
 	rel, err := filepath.Rel(root, candidate)
