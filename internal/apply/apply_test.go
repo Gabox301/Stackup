@@ -300,3 +300,50 @@ func TestApplyFailsSafeOnInvalidJSON(t *testing.T) {
 		t.Error("Apply() left a backup for a write that never happened")
 	}
 }
+
+func TestApplyPreservesFileMode(t *testing.T) {
+	t.Parallel()
+
+	const rel = ".vscode/settings.json"
+	root := t.TempDir()
+	seed(t, root, rel, "{\"editor.tabSize\": 4}\n")
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	// Restrict the mode best-effort: platforms without POSIX bits keep
+	// 0666/0444 and the equality checks below still hold vacuously.
+	if err := os.Chmod(abs, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := generate.Plan{Files: []generate.FileOp{
+		{Path: rel, Content: []byte("{\"editor.tabSize\": 2, \"files.eol\": \"\\n\"}"), JSON: true},
+	}}
+	res, err := apply.Apply(root, plan, apply.Options{})
+	if err != nil {
+		t.Fatalf("Apply() unexpected error: %v", err)
+	}
+	if got := read(t, root, rel); !strings.Contains(got, `"files.eol"`) {
+		t.Fatalf("Apply() did not overwrite %s, want the merged write:\n%s", rel, got)
+	}
+	after, err := os.Stat(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode().Perm() != before.Mode().Perm() {
+		t.Errorf("Apply() mode = %o, want the preserved source mode %o", after.Mode().Perm(), before.Mode().Perm())
+	}
+	bak, ok := res.Backups[rel]
+	if !ok {
+		t.Fatalf("Apply() result omits the backup entry for %s", rel)
+	}
+	bakInfo, err := os.Stat(filepath.Join(root, filepath.FromSlash(bak)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bakInfo.Mode().Perm() != before.Mode().Perm() {
+		t.Errorf("Apply() backup mode = %o, want the source mode %o (permissions must never widen through the copy)",
+			bakInfo.Mode().Perm(), before.Mode().Perm())
+	}
+}

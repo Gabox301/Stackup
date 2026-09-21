@@ -28,12 +28,16 @@ var requiresPython = regexp.MustCompile(`requires-python\s*=\s*"([^"]+)"`)
 
 // Detect returns Python evidence: a manifest alone grades Medium, plus a
 // lockfile grades High. A lone .python-version grades Low.
-func (PythonDetector) Detect(root string) []Evidence {
+func (PythonDetector) Detect(root string) ([]Evidence, error) {
 	var signals []string
 	pm := ""
 
 	for _, manifest := range []string{"pyproject.toml", "Pipfile", "setup.py"} {
-		if exists(root, manifest) {
+		ok, err := exists(root, manifest)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			signals = append(signals, manifest)
 		}
 	}
@@ -52,12 +56,16 @@ func (PythonDetector) Detect(root string) []Evidence {
 				Confidence:  ConfidenceLow,
 				Signals:     []string{".python-version"},
 				VersionHint: version,
-			}}
+			}}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
-	if exists(root, "Pipfile") && pm == "" {
+	pipfile, err := exists(root, "Pipfile")
+	if err != nil {
+		return nil, err
+	}
+	if pipfile && pm == "" {
 		pm = "pipenv"
 	}
 	ev := Evidence{
@@ -67,7 +75,11 @@ func (PythonDetector) Detect(root string) []Evidence {
 		PackageManager: pm,
 	}
 	for _, lock := range pythonLock {
-		if exists(root, lock.file) {
+		ok, err := exists(root, lock.file)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			ev.Signals = append(ev.Signals, lock.file)
 			ev.Confidence = ConfidenceHigh
 			ev.PackageManager = lock.pm
@@ -76,7 +88,7 @@ func (PythonDetector) Detect(root string) []Evidence {
 	if ev.VersionHint == "" {
 		ev.VersionHint = pythonVersionHint(root)
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }
 
 // pythonVersionHint prefers .python-version, then requires-python.

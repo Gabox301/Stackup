@@ -14,9 +14,13 @@ func (GoDetector) Name() string { return "go" }
 
 // Detect returns Go evidence: go.mod alone grades Medium, plus go.sum
 // grades High. The go directive line feeds VersionHint.
-func (GoDetector) Detect(root string) []Evidence {
-	if !exists(root, "go.mod") {
-		return nil
+func (GoDetector) Detect(root string) ([]Evidence, error) {
+	ok, err := exists(root, "go.mod")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
 	}
 	ev := Evidence{
 		Ecosystem:  "go",
@@ -26,11 +30,15 @@ func (GoDetector) Detect(root string) []Evidence {
 	if raw, err := os.ReadFile(filepath.Join(root, "go.mod")); err == nil {
 		ev.VersionHint = goDirectiveVersion(string(raw))
 	}
-	if exists(root, "go.sum") {
+	ok, err = exists(root, "go.sum")
+	if err != nil {
+		return nil, err
+	}
+	if ok {
 		ev.Signals = append(ev.Signals, "go.sum")
 		ev.Confidence = ConfidenceHigh
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }
 
 // goDirectiveVersion scans go.mod for the `go <version>` directive.

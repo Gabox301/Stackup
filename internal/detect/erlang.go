@@ -10,17 +10,21 @@ func (ErlangDetector) Name() string { return "erlang" }
 // rebar.lock or a .tool-versions erlang pin grades High with PackageManager
 // rebar3. A .tool-versions erlang entry alone grades Low. Weak signals such
 // as *.app.src, *.erl, or mix.exs never fire.
-func (ErlangDetector) Detect(root string) []Evidence {
-	if !exists(root, "rebar.config") {
+func (ErlangDetector) Detect(root string) ([]Evidence, error) {
+	ok, err := exists(root, "rebar.config")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		if v, ok := toolVersionsValue(root, "erlang"); ok {
 			return []Evidence{{
 				Ecosystem:   "erlang",
 				Confidence:  ConfidenceLow,
 				Signals:     []string{".tool-versions"},
 				VersionHint: v,
-			}}
+			}}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	ev := Evidence{
@@ -32,7 +36,11 @@ func (ErlangDetector) Detect(root string) []Evidence {
 	if v, ok := toolVersionsValue(root, "erlang"); ok {
 		ev.VersionHint = v
 	}
-	if exists(root, "rebar.lock") {
+	ok, err = exists(root, "rebar.lock")
+	if err != nil {
+		return nil, err
+	}
+	if ok {
 		ev.Signals = append(ev.Signals, "rebar.lock")
 		ev.Confidence = ConfidenceHigh
 	}
@@ -42,7 +50,7 @@ func (ErlangDetector) Detect(root string) []Evidence {
 		}
 		ev.Confidence = ConfidenceHigh
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }
 
 // containsSignal reports whether signals already holds name.

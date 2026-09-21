@@ -13,9 +13,13 @@ func (RubyDetector) Name() string { return "ruby" }
 // Detect returns Ruby evidence: Gemfile or a root *.gemspec alone grades
 // Medium, plus Gemfile.lock or a version pin grades High with
 // PackageManager bundler. Version files alone grade Low.
-func (RubyDetector) Detect(root string) []Evidence {
+func (RubyDetector) Detect(root string) ([]Evidence, error) {
 	var signals []string
-	if exists(root, "Gemfile") {
+	gemfile, err := exists(root, "Gemfile")
+	if err != nil {
+		return nil, err
+	}
+	if gemfile {
 		signals = append(signals, "Gemfile")
 	}
 	if matches, _ := filepath.Glob(filepath.Join(root, "*.gemspec")); len(matches) > 0 {
@@ -33,12 +37,20 @@ func (RubyDetector) Detect(root string) []Evidence {
 		if v := rubyVersionHint(root); v != "" {
 			ev.VersionHint = v
 		}
-		if exists(root, "Gemfile.lock") {
+		lock, err := exists(root, "Gemfile.lock")
+		if err != nil {
+			return nil, err
+		}
+		if lock {
 			ev.Signals = append(ev.Signals, "Gemfile.lock")
 			ev.Confidence = ConfidenceHigh
 		}
 		for _, pin := range []string{".ruby-version", ".rbenv-version"} {
-			if exists(root, pin) {
+			ok, err := exists(root, pin)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				ev.Signals = append(ev.Signals, pin)
 				ev.Confidence = ConfidenceHigh
 			}
@@ -50,7 +62,7 @@ func (RubyDetector) Detect(root string) []Evidence {
 				ev.VersionHint = v
 			}
 		}
-		return []Evidence{ev}
+		return []Evidence{ev}, nil
 	}
 
 	var hints []string
@@ -75,9 +87,9 @@ func (RubyDetector) Detect(root string) []Evidence {
 			Confidence:  ConfidenceLow,
 			Signals:     hints,
 			VersionHint: version,
-		}}
+		}}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 // rubyVersionHint prefers .ruby-version, then .rbenv-version, then .tool-versions.
