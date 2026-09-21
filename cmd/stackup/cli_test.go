@@ -212,6 +212,72 @@ func TestApplyBlockedWithoutPromptInCI(t *testing.T) {
 	}
 }
 
+func TestGenerateBlockedWithoutPromptInCI(t *testing.T) {
+	// Not parallel: stubs the process-wide terminal probes.
+	// Parity with the apply gate: pending overwrites without --yes
+	// block with exit 3 and zero writes; --yes unblocks with a backup.
+	stubTTY(t, false) // CI: stdin is not a terminal
+	stubStdoutTTY(t, false)
+	root := nodeProject(t)
+	seedFile(t, root, ".vscode/settings.json", "{}\n")
+	before, err := os.ReadFile(filepath.Join(root, ".vscode", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runCLI(t, []string{"generate", "--path", root}, "")
+	if code != 3 {
+		t.Fatalf("generate without --yes on non-TTY exit = %d, want 3 (blocked-non-interactive)", code)
+	}
+	if stdout != "" {
+		t.Errorf("blocked generate printed %q to stdout, want empty (notice goes to stderr)", stdout)
+	}
+	if !strings.Contains(stderr, "generate blocked") {
+		t.Errorf("blocked generate stderr missing the notice:\n%s", stderr)
+	}
+	after, err := os.ReadFile(filepath.Join(root, ".vscode", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Error("blocked generate modified the file, want zero writes")
+	}
+	baks, err := filepath.Glob(filepath.Join(root, ".vscode", "settings.json") + ".bak.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baks) != 0 {
+		t.Errorf("blocked generate left %d backups, want zero writes", len(baks))
+	}
+
+	stdout, _, code = runCLI(t, []string{"generate", "--path", root, "--format", "json"}, "")
+	if code != 3 {
+		t.Fatalf("generate --format json on non-TTY exit = %d, want 3", code)
+	}
+	var payload struct {
+		Pending []string `json:"pending"`
+		Blocked string   `json:"blocked"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("blocked generate JSON is not parseable: %v\n%s", err, stdout)
+	}
+	if len(payload.Pending) == 0 || payload.Blocked == "" {
+		t.Errorf("blocked generate JSON missing pending/blocked: %+v", payload)
+	}
+
+	_, _, code = runCLI(t, []string{"generate", "--path", root, "--yes"}, "")
+	if code != 0 {
+		t.Fatalf("generate --yes exit = %d, want 0", code)
+	}
+	baks, err = filepath.Glob(filepath.Join(root, ".vscode", "settings.json") + ".bak.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baks) != 1 {
+		t.Errorf("generate --yes left %d backups, want exactly one before the overwrite", len(baks))
+	}
+}
+
 func TestApplyConfirmDialogOnTTY(t *testing.T) {
 	// Not parallel: stubs the process-wide terminal probes and launcher.
 	// The y/N line prompt from slice 4 is now the TUI confirm dialog;
@@ -632,6 +698,56 @@ func TestLaunchFailureFallbackBytesIdentical(t *testing.T) {
 		}
 		if got := treeFiles(t, root); len(got) <= 1 {
 			t.Errorf("fresh apply result fallback wrote %v, want the fresh plan files", got)
+		}
+	})
+
+	t.Run("generate-plan-failure-safe-abort", func(t *testing.T) {
+		stubGates(t, true, true)
+		stubLauncher(t, &tui.StubLauncher{Err: errors.New("boom")})
+		root := nodeProject(t)
+		seedFile(t, root, ".vscode/settings.json", "{}\n")
+		before, err := os.ReadFile(filepath.Join(root, ".vscode", "settings.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runCLI(t, []string{"generate", "--path", root}, "")
+		if code != 0 {
+			t.Errorf("generate gated plan fallback exit = %d, want 0 (safe abort, never 1)", code)
+		}
+		if stdout != "" {
+			t.Errorf("generate gated plan fallback stdout = %q, want empty (abort prints only to stderr)", stdout)
+		}
+		if !strings.Contains(stderr, "warning: interactive display unavailable") {
+			t.Errorf("generate gated plan fallback stderr missing the warning:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, "generate aborted") {
+			t.Errorf("generate gated plan fallback stderr missing the abort notice:\n%s", stderr)
+		}
+		after, err := os.ReadFile(filepath.Join(root, ".vscode", "settings.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(after) != string(before) {
+			t.Error("generate gated plan fallback modified the file, want zero writes")
+		}
+	})
+
+	t.Run("generate-plan-failure-fresh-falls-back-to-print", func(t *testing.T) {
+		stubGates(t, true, true)
+		stubLauncher(t, &tui.StubLauncher{Err: errors.New("boom")})
+		root := nodeProject(t)
+		stdout, stderr, code := runCLI(t, []string{"generate", "--path", root}, "")
+		if code != 0 {
+			t.Errorf("fresh generate plan fallback exit = %d, want 0", code)
+		}
+		if !strings.Contains(stderr, "warning: interactive display unavailable") {
+			t.Errorf("fresh generate plan fallback stderr missing the warning:\n%s", stderr)
+		}
+		if !strings.Contains(stdout, "wrote ") {
+			t.Errorf("fresh generate plan fallback stdout missing the written summary:\n%s", stdout)
+		}
+		if got := treeFiles(t, root); len(got) <= 1 {
+			t.Errorf("fresh generate plan fallback wrote %v, want the fresh plan files", got)
 		}
 	})
 }

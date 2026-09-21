@@ -81,26 +81,58 @@ func TestGenerateDryRunPresentsPlanScreen(t *testing.T) {
 	}
 }
 
-// TestGenerateWritePresentsPlanThenWrites proves presence never gates the
-// write: the Plan screen shows first, then files land with no summary print.
-func TestGenerateWritePresentsPlanThenWrites(t *testing.T) {
+// TestGeneratePlanGateOnTTY proves the Plan screen gates the write: an
+// abort answer exits clean with zero writes, while an explicit write
+// answer writes and is followed by the Result screen (no summary print).
+func TestGeneratePlanGateOnTTY(t *testing.T) {
 	stubGates(t, true, true)
-	stub := &tui.StubLauncher{Action: tui.ActionAbort}
-	stubLauncher(t, stub)
+
+	aborter := &tui.StubLauncher{Action: tui.ActionAbort}
+	stubLauncher(t, aborter)
 	root := nodeProject(t)
 
-	stdout, _, code := runCLI(t, []string{"generate", "--path", root}, "")
+	stdout, stderr, code := runCLI(t, []string{"generate", "--path", root}, "")
 	if code != 0 {
-		t.Fatalf("generate on TTY exit = %d, want 0", code)
+		t.Fatalf("generate declining the gate exit = %d, want 0 (clean abort)", code)
 	}
-	if stub.Calls != 1 || stub.Inputs[0].Screen != tui.ScreenPlan {
-		t.Fatalf("stub screens = %+v, want exactly 1 plan screen", stub.Inputs)
+	if aborter.Calls != 1 || aborter.Inputs[0].Screen != tui.ScreenPlan {
+		t.Fatalf("abort stub screens = %+v, want exactly 1 plan screen", aborter.Inputs)
 	}
 	if stdout != "" {
-		t.Errorf("generate on TTY printed %q, want empty (plan was the output)", stdout)
+		t.Errorf("declined generate printed %q to stdout, want empty (abort prints only to stderr)", stdout)
+	}
+	if !strings.Contains(stderr, "generate aborted") {
+		t.Errorf("declined generate stderr missing the abort notice:\n%s", stderr)
+	}
+	if got := treeFiles(t, root); len(got) != 1 || got[0] != "package.json" {
+		t.Errorf("declined generate wrote %v, want zero writes", got)
+	}
+
+	stub := &tui.StubLauncher{Action: tui.ActionApply}
+	stubLauncher(t, stub)
+
+	stdout, _, code = runCLI(t, []string{"generate", "--path", root}, "")
+	if code != 0 {
+		t.Fatalf("generate confirming the gate exit = %d, want 0", code)
+	}
+	// Gate then result: two screens per confirmed write.
+	if stub.Calls != 2 {
+		t.Fatalf("stub calls = %d, want plan + result (2) per confirmed generate", stub.Calls)
+	}
+	if len(stub.Inputs) != 2 || stub.Inputs[0].Screen != tui.ScreenPlan || stub.Inputs[1].Screen != tui.ScreenResult {
+		t.Errorf("stub screens = %v, want [plan result]", stub.Inputs)
+	}
+	if len(stub.Inputs[0].Pending) != 0 {
+		t.Errorf("fresh plan carries %d pending overwrites, want none", len(stub.Inputs[0].Pending))
+	}
+	if len(stub.Inputs[1].Written.Written) == 0 {
+		t.Error("result screen carries no written summary, want the fresh write")
+	}
+	if stdout != "" {
+		t.Errorf("generate on TTY printed %q, want empty (result was the output)", stdout)
 	}
 	if got := treeFiles(t, root); len(got) <= 1 {
-		t.Errorf("generate on TTY wrote %v, want the fresh plan files", got)
+		t.Errorf("confirmed generate wrote %v, want the fresh plan files", got)
 	}
 }
 

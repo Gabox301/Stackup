@@ -2,7 +2,7 @@
 
 Detect your project's stack and generate IDE configs for it — safely.
 
-> 🌐 [Leer en español](README.es.md) — English is the canonical version; translations are best-effort.
+> 🌐 [Leer en español](README.es.md)
 
 ## English
 
@@ -26,13 +26,13 @@ go build -o stackup ./cmd/stackup
 Download the archive matching your OS and architecture from
 [GitHub Releases](https://github.com/Gabox301/Stackup/releases):
 
-| OS | Architecture | Example file |
-| --- | --- | --- |
-| Windows | x86_64 (amd64) | `stackup_0.1.0_Windows_x86_64.zip` |
-| Linux | x86_64 (amd64) | `stackup_0.1.0_Linux_x86_64.tar.gz` |
-| Linux | arm64 | `stackup_0.1.0_Linux_arm64.tar.gz` |
-| macOS | x86_64 (amd64) | `stackup_0.1.0_Darwin_x86_64.tar.gz` |
-| macOS | arm64 | `stackup_0.1.0_Darwin_arm64.tar.gz` |
+| OS      | Architecture   | Example file                         |
+| ------- | -------------- | ------------------------------------ |
+| Windows | x86_64 (amd64) | `stackup_0.1.0_Windows_x86_64.zip`   |
+| Linux   | x86_64 (amd64) | `stackup_0.1.0_Linux_x86_64.tar.gz`  |
+| Linux   | arm64          | `stackup_0.1.0_Linux_arm64.tar.gz`   |
+| macOS   | x86_64 (amd64) | `stackup_0.1.0_Darwin_x86_64.tar.gz` |
+| macOS   | arm64          | `stackup_0.1.0_Darwin_arm64.tar.gz`  |
 
 Or install the latest release with Go (requires Go 1.27.1+):
 

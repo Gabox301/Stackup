@@ -14,4 +14,4 @@ Files to write
   .vscode/launch.json (new)
   .vscode/tasks.json (new)
 
-q quit · up/down move · quit writes
+y write · n abort · up/down move · enter write

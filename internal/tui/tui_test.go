@@ -206,21 +206,87 @@ func TestResultViewGolden(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(stripANSI(m.View())))
 }
 
-// TestPresenceScreensUpdatePerScreen covers per-screen Update keys and
-// clamps for the cursor-based presence screens (evidence, plan, result):
-// navigation moves and clamps, quit keys (including y/n/enter) abort
-// without confirming, and size/unbound keys never decide.
-func TestPresenceScreensUpdatePerScreen(t *testing.T) {
+// TestPlanKeysDecide covers the generate write gate: y/enter confirms
+// the write, n/q/esc aborts, navigation moves and clamps without ever
+// deciding, and size/unbound keys leave the gate undecided.
+func TestPlanKeysDecide(t *testing.T) {
 	t.Parallel()
 
 	plan := vscodePlan(t)
+	pending := []string{".vscode/settings.json"}
+
+	writeKeys := []tea.Msg{
+		keyRunes("y"),
+		keyRunes("Y"),
+		keyType(tea.KeyEnter),
+	}
+	for _, msg := range writeKeys {
+		m := updateModel(tui.NewPlanModel(plan, pending), msg)
+		if !m.Decided() || !m.Confirmed() {
+			t.Errorf("key %v decided=%v confirmed=%v, want both true", msg, m.Decided(), m.Confirmed())
+		}
+		if m.Decision() != tui.ActionApply {
+			t.Errorf("key %v decision = %v, want ActionApply", msg, m.Decision())
+		}
+	}
+
+	abortKeys := []tea.Msg{
+		keyRunes("n"),
+		keyRunes("N"),
+		keyRunes("q"),
+		keyType(tea.KeyEsc),
+		keyType(tea.KeyCtrlC),
+	}
+	for _, msg := range abortKeys {
+		m := updateModel(tui.NewPlanModel(plan, pending), msg)
+		if !m.Decided() || m.Confirmed() {
+			t.Errorf("key %v decided=%v confirmed=%v, want decided-only", msg, m.Decided(), m.Confirmed())
+		}
+		if m.Decision() != tui.ActionAbort {
+			t.Errorf("key %v decision = %v, want ActionAbort", msg, m.Decision())
+		}
+	}
+
+	// Navigation moves and clamps without deciding.
+	m := tui.NewPlanModel(plan, pending)
+	if moved := updateModel(m, keyType(tea.KeyDown)); moved.Cursor() != 1 || moved.Decided() {
+		t.Errorf("down cursor=%d decided=%v, want 1/false", moved.Cursor(), moved.Decided())
+	}
+	if pinned := updateModel(m, keyType(tea.KeyUp)); pinned.Cursor() != 0 || pinned.Decided() {
+		t.Errorf("up at top cursor=%d decided=%v, want 0/false", pinned.Cursor(), pinned.Decided())
+	}
+	bottom := m
+	for range len(plan.Files) + 2 {
+		bottom = updateModel(bottom, keyType(tea.KeyDown))
+	}
+	if bottom.Cursor() != len(plan.Files)-1 || bottom.Decided() {
+		t.Errorf("down at bottom cursor=%d decided=%v, want %d/false", bottom.Cursor(), bottom.Decided(), len(plan.Files)-1)
+	}
+	if sized := updateModel(m, tea.WindowSizeMsg{Width: 80, Height: 30}); sized.Decided() {
+		t.Error("WindowSizeMsg decided the gate, want undecided")
+	}
+	if other := updateModel(m, keyRunes("x")); other.Decided() {
+		t.Error("unbound key decided the gate, want undecided")
+	}
+	if fresh := tui.NewPlanModel(plan, pending); fresh.Decided() || fresh.Decision() != tui.ActionAbort {
+		t.Error("fresh gate is not the safe undecided-Abort default")
+	}
+}
+
+// TestPresenceScreensUpdatePerScreen covers per-screen Update keys and
+// clamps for the read-only presence screens (evidence, result):
+// navigation moves and clamps, quit keys (including y/n/enter) abort
+// without confirming, and size/unbound keys never decide. The plan
+// gate owns its own key contract in TestPlanKeysDecide.
+func TestPresenceScreensUpdatePerScreen(t *testing.T) {
+	t.Parallel()
+
 	screens := []struct {
 		name  string
 		model tui.Model
 		top   int
 	}{
 		{"evidence", tui.NewEvidenceModel(nodeEvidence()), 0},
-		{"plan", tui.NewPlanModel(plan, nil), len(plan.Files) - 1},
 		{"result", tui.NewResultModel(apply.Result{Written: []string{"a"}}), 0},
 	}
 	for _, sc := range screens {

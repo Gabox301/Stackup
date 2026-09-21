@@ -27,9 +27,14 @@ var ascii = lipgloss.NewRenderer(io.Discard, termenv.WithProfile(termenv.Ascii))
 // shutdown (EOF, closed input) reads as Abort, so the dialog can never
 // confirm by accident.
 //
-// Presence screens (evidence, plan, diff, result) are read-only: any
-// quit key leaves Decided set with apply false, so Decision stays
-// Abort and no write is ever gated by them.
+// ScreenPlan is the generate write gate with the same keys: y writes,
+// n/q/esc aborts, up/k and down/j move the highlight, enter writes.
+// An undecided shutdown reads as Abort, so the gate can never write
+// by accident.
+//
+// Presence screens (evidence, diff, result) are read-only: any quit
+// key leaves Decided set with apply false, so Decision stays Abort
+// and no write is ever gated by them.
 type Model struct {
 	screen      Screen
 	files       []string
@@ -76,8 +81,9 @@ func NewEvidenceModel(ev []detect.Evidence) Model {
 	}
 }
 
-// NewPlanModel builds the read-only generate preview for p. pending
-// marks overwrites with the same wording as the confirm screen.
+// NewPlanModel builds the generate write gate for p. pending marks
+// overwrites with the same wording as the confirm screen. Only an
+// explicit y/enter confirms the write; n/q/esc aborts with no writes.
 func NewPlanModel(p generate.Plan, pending []string) Model {
 	m := NewConfirmModel(p, pending)
 	m.screen = ScreenPlan
@@ -145,15 +151,15 @@ func (m Model) Decided() bool {
 	return m.decided
 }
 
-// Confirmed reports whether the user chose to apply. It is meaningful
-// only after Decided, and only on the confirm screen.
+// Confirmed reports whether the user chose to write. It is meaningful
+// only after Decided, and only on the confirm and plan screens.
 func (m Model) Confirmed() bool {
-	return m.screen == ScreenConfirm && m.decided && m.apply
+	return (m.screen == ScreenConfirm || m.screen == ScreenPlan) && m.decided && m.apply
 }
 
 // Decision maps the dialog outcome to the Launcher answer. Undecided
 // (EOF, killed program) is Abort: the safe default. Only the confirm
-// screen can return Apply.
+// and plan screens can return Apply.
 func (m Model) Decision() Action {
 	if m.Confirmed() {
 		return ActionApply
@@ -186,15 +192,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if m.screen == ScreenConfirm {
+	if m.screen == ScreenConfirm || m.screen == ScreenPlan {
 		return updateConfirm(m, key)
 	}
 	return updatePresence(m, key)
 }
 
-// updateConfirm handles the confirm dialog keys verbatim: y applies,
-// n/q/esc aborts, up/k and down/j move the highlight, enter applies.
-// Deciding keys quit the program so Run returns the answer.
+// updateConfirm handles the confirm dialog and plan gate keys verbatim:
+// y applies/writes, n/q/esc aborts, up/k and down/j move the highlight,
+// enter applies/writes. Deciding keys quit the program so Run returns
+// the answer.
 func updateConfirm(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "y", "Y", "enter":
@@ -217,9 +224,9 @@ func updateConfirm(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updatePresence handles read-only screens: navigation moves the
-// highlight, every quit key (including y/n/enter) quits as Abort so
-// presence can never imply consent.
+// updatePresence handles read-only screens (evidence, result):
+// navigation moves the highlight, every quit key (including y/n/enter)
+// quits as Abort so presence can never imply consent.
 func updatePresence(m Model, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "y", "Y", "n", "N", "q", "Q", "enter", "esc", "ctrl+c":
@@ -293,8 +300,9 @@ func (m Model) viewEvidence() string {
 	return m.compose("Stackup detect", "", "Detected stacks", rows, "q quit · up/down move")
 }
 
-// viewPlan renders the generate preview with confirm wording. Quitting
-// returns to the caller, which performs the write.
+// viewPlan renders the generate write gate with confirm wording. Only
+// an explicit y/enter returns Apply and lets the caller write; n/q/esc
+// aborts with zero writes.
 func (m Model) viewPlan() string {
 	rows := make([]string, 0, len(m.files))
 	for i, path := range m.files {
@@ -304,7 +312,7 @@ func (m Model) viewPlan() string {
 		}
 		rows = append(rows, row)
 	}
-	return m.compose("Stackup generate", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "q quit · up/down move · quit writes")
+	return m.compose("Stackup generate", m.pendingLine(len(m.files), len(m.isOverwrite)), "Files to write", rows, "y write · n abort · up/down move · enter write")
 }
 
 // viewResult renders the apply write summary with the same lines as
