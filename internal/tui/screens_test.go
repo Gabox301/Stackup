@@ -103,10 +103,8 @@ func TestPresenceNavigationClamps(t *testing.T) {
 func TestPresenceQuitIsAbort(t *testing.T) {
 	t.Parallel()
 
-	plan := vscodePlan(t)
 	screens := map[string]tui.Model{
 		"evidence": tui.NewEvidenceModel(nodeEvidence()),
-		"plan":     tui.NewPlanModel(plan, nil),
 		"diff":     tui.NewDiffModel(twoFilePreview()),
 		"result":   tui.NewResultModel(apply.Result{Written: []string{".vscode/settings.json"}}),
 	}
@@ -218,7 +216,7 @@ func TestPlanViewKeepsConfirmWording(t *testing.T) {
 
 	plan := vscodePlan(t)
 	view := stripANSI(tui.NewPlanModel(plan, []string{".vscode/settings.json"}).View())
-	for _, want := range []string{"Stackup generate", "4 files:", "3 new, 1 overwrite", ".vscode/settings.json (overwrite)"} {
+	for _, want := range []string{"Stackup generate", "4 files:", "3 new, 1 overwrite", ".vscode/settings.json (overwrite)", "y write · n abort", "enter write"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plan View() missing %q:\n%s", want, view)
 		}
