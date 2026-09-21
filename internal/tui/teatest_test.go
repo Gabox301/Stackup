@@ -46,23 +46,44 @@ func TestConfirmInteractiveApplies(t *testing.T) {
 // confirms the write. Not parallel: each leg runs a live program.
 func TestPlanInteractiveAbortAndWrite(t *testing.T) {
 	plan := vscodePlan(t)
+	pending := []string{".vscode/settings.json"}
 	cases := []struct {
 		name      string
 		key       tea.KeyMsg
 		want      tui.Action
 		confirmed bool
+		// direct proves the leg via Model.Update instead of a live
+		// program. Only esc uses it: teatest's FinalModel races the
+		// esc quit path ("FinalModel() is not a tui.Model"), while
+		// Update-direct proves the same decided-Abort contract
+		// deterministically. See also TestPlanKeysDecide, which pins
+		// every abort key Update-direct.
+		direct bool
 	}{
-		{"n aborts", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, tui.ActionAbort, false},
-		{"q aborts", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}, tui.ActionAbort, false},
-		{"esc aborts", tea.KeyMsg{Type: tea.KeyEsc}, tui.ActionAbort, false},
-		{"y writes", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}, tui.ActionApply, true},
-		{"enter writes", tea.KeyMsg{Type: tea.KeyEnter}, tui.ActionApply, true},
+		{"n aborts", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}, tui.ActionAbort, false, false},
+		{"q aborts", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}, tui.ActionAbort, false, false},
+		{"esc aborts", tea.KeyMsg{Type: tea.KeyEsc}, tui.ActionAbort, false, true},
+		{"y writes", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}, tui.ActionApply, true, false},
+		{"enter writes", tea.KeyMsg{Type: tea.KeyEnter}, tui.ActionApply, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.direct {
+				final := updateModel(tui.NewPlanModel(plan, pending), tc.key)
+				if !final.Decided() {
+					t.Errorf("direct %s left the gate undecided, want quit", tc.name)
+				}
+				if final.Decision() != tc.want {
+					t.Errorf("direct decision = %v, want %v", final.Decision(), tc.want)
+				}
+				if final.Confirmed() != tc.confirmed {
+					t.Errorf("direct confirmed = %v, want %v", final.Confirmed(), tc.confirmed)
+				}
+				return
+			}
 			tm := teatest.NewTestModel(
 				t,
-				tui.NewPlanModel(plan, []string{".vscode/settings.json"}),
+				tui.NewPlanModel(plan, pending),
 				teatest.WithInitialTermSize(80, 30),
 			)
 			teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
