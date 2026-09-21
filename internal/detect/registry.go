@@ -2,6 +2,7 @@ package detect
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,31 +39,79 @@ func DefaultRegistry() *Registry {
 }
 
 // DetectAll runs every detector in registry order and returns the combined
-// evidence sorted High to Low. Ties keep registry order (stable sort).
-func (r *Registry) DetectAll(root string) []Evidence {
+// evidence sorted High to Low. Ties keep registry order (stable sort). A
+// filesystem error (e.g. a permission-denied manifest) aborts the run:
+// an unreadable tree must never scan as an empty one.
+func (r *Registry) DetectAll(root string) ([]Evidence, error) {
 	var out []Evidence
 	for _, d := range r.detectors {
-		out = append(out, d.Detect(root)...)
+		ev, err := d.Detect(root)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ev...)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].Confidence > out[j].Confidence
 	})
-	return out
+	return out, nil
 }
 
 // Detect runs the default registry over root. When nothing fires it returns
 // ErrUnknownStack unless allowUnknown is true, in which case it returns an
-// empty list so callers can proceed without detection.
+// empty list so callers can proceed without detection. Filesystem errors
+// propagate unchanged instead of collapsing into unknown-stack.
 func Detect(root string, allowUnknown bool) ([]Evidence, error) {
-	evidences := DefaultRegistry().DetectAll(root)
+	evidences, err := DefaultRegistry().DetectAll(root)
+	if err != nil {
+		return nil, err
+	}
 	if len(evidences) == 0 && !allowUnknown {
 		return nil, ErrUnknownStack
 	}
 	return evidences, nil
 }
 
-// exists reports whether name exists directly under root.
-func exists(root, name string) bool {
-	_, err := os.Stat(filepath.Join(root, name))
-	return err == nil
+// statFile stats one filesystem path. It is a variable so tests can inject
+// permission failures deterministically on platforms where chmod fixtures
+// do not enforce (e.g. Windows); production always uses os.Stat.
+var statFile = os.Stat
+
+// exists reports whether name is a regular file directly under root.
+//
+// Absent files report (false, nil). Permission failures surface as errors
+// so callers never mistake an unreadable tree for an empty one. Any other
+// stat failure keeps the historical absent verdict. Non-regular files (a
+// directory named package.json, a fifo, ...) report (false, nil): only
+// regular files yield evidence.
+func exists(root, name string) (bool, error) {
+	fi, err := statFile(filepath.Join(root, name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		if os.IsPermission(err) {
+			return false, fmt.Errorf("detect: stat %s: %w", name, err)
+		}
+		return false, nil
+	}
+	if !fi.Mode().IsRegular() {
+		return false, nil
+	}
+	return true, nil
+}
+
+// anyExists reports whether any of names is a regular file under root.
+// The first permission failure aborts with an error; see exists.
+func anyExists(root string, names ...string) (bool, error) {
+	for _, name := range names {
+		ok, err := exists(root, name)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }

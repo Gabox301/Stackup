@@ -19,8 +19,12 @@ func (RustDetector) Name() string { return "rust" }
 
 // Detect returns Rust evidence: Cargo.toml alone grades Medium, plus
 // Cargo.lock grades High. A lone rust-toolchain.toml grades Low.
-func (RustDetector) Detect(root string) []Evidence {
-	if !exists(root, "Cargo.toml") {
+func (RustDetector) Detect(root string) ([]Evidence, error) {
+	ok, err := exists(root, "Cargo.toml")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		if raw, err := os.ReadFile(filepath.Join(root, "rust-toolchain.toml")); err == nil {
 			ev := Evidence{
 				Ecosystem:  "rust",
@@ -30,9 +34,9 @@ func (RustDetector) Detect(root string) []Evidence {
 			if m := toolchainChannel.FindStringSubmatch(string(raw)); m != nil {
 				ev.VersionHint = m[1]
 			}
-			return []Evidence{ev}
+			return []Evidence{ev}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	ev := Evidence{
@@ -45,9 +49,13 @@ func (RustDetector) Detect(root string) []Evidence {
 			ev.VersionHint = m[1]
 		}
 	}
-	if exists(root, "Cargo.lock") {
+	ok, err = exists(root, "Cargo.lock")
+	if err != nil {
+		return nil, err
+	}
+	if ok {
 		ev.Signals = append(ev.Signals, "Cargo.lock")
 		ev.Confidence = ConfidenceHigh
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }

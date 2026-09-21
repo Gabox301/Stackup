@@ -72,7 +72,7 @@ The system MUST show a TUI screen for each command on qualifying runs. Content M
 - GIVEN TTY `apply` with pending overwrites and no `--yes`
 - WHEN the user confirms or declines
 - THEN wording, writes, and exits match current behavior
-- AND only confirm returns ActionApply
+- AND only an explicit write answer (apply confirm, generate plan gate) returns ActionApply
 
 ### Requirement: TUI gate rule
 
@@ -101,7 +101,7 @@ The system MUST present iff `stdoutIsTTY && stdinIsTTY && !yes && !non-interacti
 
 ### Requirement: Fallback and write gating
 
-On gate exclusion or launch failure the system MUST print byte-identical text plus a stderr warning, MUST preserve the engine exit (never coerce to 1), and presence MUST NEVER gate writes — only `apply` confirm returns ActionApply.
+On gate exclusion or launch failure the system MUST print byte-identical text plus a stderr warning, MUST preserve the engine exit (never coerce to 1), and presence MUST NEVER gate writes — only an explicit write answer returns ActionApply.
 
 #### Scenario: launch-failure-fallback
 

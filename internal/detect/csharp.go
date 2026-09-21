@@ -22,7 +22,7 @@ func (CSharpDetector) Name() string { return "csharp" }
 // Detect returns C# evidence: a root *.csproj or *.sln[x] alone grades
 // Medium, plus packages.lock.json or global.json grades High. A lone
 // dotnet-tools hint, NuGet.config, or Directory.Build.props grades Low.
-func (CSharpDetector) Detect(root string) []Evidence {
+func (CSharpDetector) Detect(root string) ([]Evidence, error) {
 	matches, _ := filepath.Glob(filepath.Join(root, "*.csproj"))
 	var signals []string
 	for _, m := range matches {
@@ -45,12 +45,16 @@ func (CSharpDetector) Detect(root string) []Evidence {
 			ev.VersionHint = v
 		}
 		for _, pin := range []string{"packages.lock.json", "global.json"} {
-			if exists(root, pin) {
+			ok, err := exists(root, pin)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				ev.Signals = append(ev.Signals, pin)
 				ev.Confidence = ConfidenceHigh
 			}
 		}
-		return []Evidence{ev}
+		return []Evidence{ev}, nil
 	}
 
 	var hints []string
@@ -59,7 +63,11 @@ func (CSharpDetector) Detect(root string) []Evidence {
 		"NuGet.config",
 		"Directory.Build.props",
 	} {
-		if exists(root, hint) {
+		ok, err := exists(root, hint)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			hints = append(hints, hint)
 		}
 	}
@@ -68,9 +76,9 @@ func (CSharpDetector) Detect(root string) []Evidence {
 			Ecosystem:  "csharp",
 			Confidence: ConfidenceLow,
 			Signals:    hints,
-		}}
+		}}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 // csharpVersionHint prefers global.json sdk.version, then the first TFM.

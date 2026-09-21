@@ -28,16 +28,24 @@ var nodeLock = []struct {
 // (bun.lock/bun.lockb) are presence-only and set Runtime=bun; the
 // packageManager field wins over lockfiles, otherwise bun wins when its
 // lockfile is present. Frameworks come from a root-only presence-only scan.
-func (NodeDetector) Detect(root string) []Evidence {
-	if !exists(root, "package.json") {
-		if exists(root, ".nvmrc") {
+func (NodeDetector) Detect(root string) ([]Evidence, error) {
+	ok, err := exists(root, "package.json")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		nvm, err := exists(root, ".nvmrc")
+		if err != nil {
+			return nil, err
+		}
+		if nvm {
 			return []Evidence{{
 				Ecosystem:  "node",
 				Confidence: ConfidenceLow,
 				Signals:    []string{".nvmrc"},
-			}}
+			}}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	ev := Evidence{
@@ -54,7 +62,11 @@ func (NodeDetector) Detect(root string) []Evidence {
 	}
 
 	for _, lock := range nodeLock {
-		if exists(root, lock.file) {
+		ok, err := exists(root, lock.file)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			ev.Signals = append(ev.Signals, lock.file)
 			ev.Confidence = ConfidenceHigh
 			if ev.PackageManager == "" {
@@ -68,7 +80,11 @@ func (NodeDetector) Detect(root string) []Evidence {
 	// runtime. PackageManager resolves field-first, else bun.
 	hasBun := false
 	for _, bunLock := range []string{"bun.lock", "bun.lockb"} {
-		if exists(root, bunLock) {
+		ok, err := exists(root, bunLock)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			ev.Signals = append(ev.Signals, bunLock)
 			ev.Confidence = ConfidenceHigh
 			hasBun = true
@@ -84,7 +100,7 @@ func (NodeDetector) Detect(root string) []Evidence {
 	} else if fieldPM == "bun" {
 		ev.Runtime = "bun"
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }
 
 // nodeFrameworks maps root dependencies to framework signals, presence-only.

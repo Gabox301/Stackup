@@ -17,23 +17,36 @@ func (JavaDetector) Name() string { return "java" }
 // When both Maven and Gradle manifests exist, Gradle wins the
 // PackageManager but both manifests stay in Signals. Version-hint files
 // alone grade Low.
-func (JavaDetector) Detect(root string) []Evidence {
-	hasPom := exists(root, "pom.xml")
-	hasGradleBuild := exists(root, "build.gradle") || exists(root, "build.gradle.kts")
-	hasGradleSettings := exists(root, "settings.gradle") || exists(root, "settings.gradle.kts")
+func (JavaDetector) Detect(root string) ([]Evidence, error) {
+	hasPom, err := exists(root, "pom.xml")
+	if err != nil {
+		return nil, err
+	}
+	hasGradleBuild, err := anyExists(root, "build.gradle", "build.gradle.kts")
+	if err != nil {
+		return nil, err
+	}
+	hasGradleSettings, err := anyExists(root, "settings.gradle", "settings.gradle.kts")
+	if err != nil {
+		return nil, err
+	}
 	hasGradle := hasGradleBuild || hasGradleSettings
 
 	if !hasPom && !hasGradleBuild {
-		if v, signals := javaLowHint(root); v != "" || signals != nil {
+		v, signals, err := javaLowHint(root)
+		if err != nil {
+			return nil, err
+		}
+		if v != "" || signals != nil {
 			ev := Evidence{
 				Ecosystem:  "java",
 				Confidence: ConfidenceLow,
 				Signals:    signals,
 			}
 			ev.VersionHint = v
-			return []Evidence{ev}
+			return []Evidence{ev}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	ev := Evidence{
@@ -44,7 +57,11 @@ func (JavaDetector) Detect(root string) []Evidence {
 		ev.Signals = append(ev.Signals, "pom.xml")
 	}
 	for _, f := range []string{"build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"} {
-		if exists(root, f) {
+		ok, err := exists(root, f)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			ev.Signals = append(ev.Signals, f)
 		}
 	}
@@ -66,7 +83,11 @@ func (JavaDetector) Detect(root string) []Evidence {
 		".sdkmanrc",
 		".tool-versions",
 	} {
-		if !exists(root, pin) {
+		ok, err := exists(root, pin)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			continue
 		}
 		if pin == ".tool-versions" {
@@ -77,7 +98,7 @@ func (JavaDetector) Detect(root string) []Evidence {
 		ev.Signals = append(ev.Signals, pin)
 		ev.Confidence = ConfidenceHigh
 	}
-	return []Evidence{ev}
+	return []Evidence{ev}, nil
 }
 
 // javaVersionHint prefers .java-version, then .sdkmanrc java=, then .tool-versions.
@@ -102,14 +123,18 @@ func javaVersionHint(root string) string {
 }
 
 // javaLowHint reports Low evidence from version-hint files alone.
-func javaLowHint(root string) (string, []string) {
+func javaLowHint(root string) (string, []string, error) {
 	var signals []string
 	version := ""
 	if v, ok := readVersionFile(filepath.Join(root, ".java-version")); ok {
 		signals = append(signals, ".java-version")
 		version = v
 	}
-	if exists(root, ".sdkmanrc") {
+	ok, err := exists(root, ".sdkmanrc")
+	if err != nil {
+		return "", nil, err
+	}
+	if ok {
 		signals = append(signals, ".sdkmanrc")
 		if version == "" {
 			version = javaVersionHint(root)
@@ -122,9 +147,9 @@ func javaLowHint(root string) (string, []string) {
 		}
 	}
 	if len(signals) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
-	return version, signals
+	return version, signals, nil
 }
 
 // toolVersionsValue returns the version for a plugin in .tool-versions.

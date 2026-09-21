@@ -54,7 +54,9 @@ type Evidence struct {
 type Detector interface {
 	// Name returns the ecosystem key used in Evidence.Ecosystem.
 	Name() string
-	// Detect returns zero or more findings for root; never an error.
-	// Missing or unreadable files simply yield no evidence.
-	Detect(root string) []Evidence
+	// Detect returns zero or more findings for root. Missing files and
+	// non-regular files simply yield no evidence; permission-denied
+	// manifests return an error so an unreadable tree never scans as
+	// an empty one.
+	Detect(root string) ([]Evidence, error)
 }

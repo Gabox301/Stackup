@@ -8,10 +8,19 @@
 // (merge.Apply with SetKey ops, the future --force behavior) is selected
 // only via Options.Force. DryRun resolves the same bytes but writes
 // nothing, backing the --dry-run preview.
+//
+// Backup retention: stackup never prunes backups. Same-second reruns
+// dedupe with a numeric suffix, so repeated applies accumulate
+// <name>.bak.<ts>[-N] siblings next to the target; delete them yourself
+// when the pre-write image no longer matters. Overwrites preserve the
+// source file mode on both the target and its backup, so restrictive
+// permissions never widen through the backup copy; fresh files are
+// created 0644 (umask applies).
 package apply
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -74,35 +83,82 @@ func Apply(root string, p generate.Plan, opts Options) (Result, error) {
 }
 
 // writeOne backs up an existing target and writes the resolved bytes,
-// returning the backup relative path ("" for fresh files).
+// returning the backup relative path ("" for fresh files). The source is
+// opened once and its mode and pre-write image come from that single
+// open, so no stat-then-read race can swap the bytes between the check
+// and the backup. Overwrites preserve the source mode on the target and
+// the backup; fresh files are created 0644.
 func writeOne(root string, fd diff.FileDiff) (string, error) {
 	abs := filepath.Join(root, filepath.FromSlash(fd.Path))
-	var backup string
-	if _, err := os.Stat(abs); err == nil {
-		var err error
-		backup, err = backupFile(root, abs)
-		if err != nil {
-			return "", err
-		}
-	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("apply: stat %s: %w", fd.Path, err)
+	original, mode, ok, err := readExisting(abs, fd.Path)
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return "", fmt.Errorf("apply: create parent of %s: %w", fd.Path, err)
 	}
-	if err := os.WriteFile(abs, fd.Content, 0o644); err != nil {
+	var backup string
+	if ok {
+		backup, err = backupFile(root, abs, original, mode)
+		if err != nil {
+			return "", err
+		}
+	}
+	perm := os.FileMode(0o644)
+	if ok {
+		perm = mode
+	}
+	if err := os.WriteFile(abs, fd.Content, perm); err != nil {
 		return "", fmt.Errorf("apply: write %s: %w", fd.Path, err)
+	}
+	if ok {
+		// WriteFile applies perm only on creation; truncating an
+		// existing file keeps whatever mode it had, so enforce the
+		// captured source mode explicitly.
+		if err := os.Chmod(abs, mode); err != nil {
+			return "", fmt.Errorf("apply: preserve mode of %s: %w", fd.Path, err)
+		}
 	}
 	return backup, nil
 }
 
-// backupFile copies abs to a timestamped sibling and returns the
-// root-relative backup path. Same-second reruns dedupe with a counter.
-func backupFile(root, abs string) (string, error) {
-	original, err := os.ReadFile(abs)
+// readExisting opens an existing target once and returns its bytes, its
+// permission bits, and true. A missing target reports ok=false with no
+// error so the caller takes the fresh-file path; any other open, stat,
+// or read failure aborts before anything is written. Non-regular targets
+// (e.g. a directory where a file is planned) fail instead of being
+// backed up or truncated.
+func readExisting(abs, rel string) (content []byte, mode os.FileMode, ok bool, err error) {
+	f, err := os.Open(abs)
 	if err != nil {
-		return "", fmt.Errorf("apply: read for backup: %w", err)
+		if os.IsNotExist(err) {
+			return nil, 0, false, nil
+		}
+		return nil, 0, false, fmt.Errorf("apply: open %s: %w", rel, err)
 	}
+	defer func() { _ = f.Close() }()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("apply: stat %s: %w", rel, err)
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, 0, false, fmt.Errorf("apply: %s: not a regular file", rel)
+	}
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("apply: read %s: %w", rel, err)
+	}
+	return raw, fi.Mode().Perm(), true, nil
+}
+
+// backupFile copies original (already read from abs under one open; see
+// writeOne) to a timestamped sibling and returns the root-relative backup
+// path. Same-second reruns dedupe with a counter suffix. The backup
+// inherits the source mode so restrictive permissions never widen through
+// the copy. Backups accumulate: stackup keeps every sibling and never
+// prunes; remove <name>.bak.* yourself when the pre-write image no longer
+// matters.
+func backupFile(root, abs string, original []byte, mode os.FileMode) (string, error) {
 	stamp := time.Now().UTC().Format(timeFormat)
 	candidate := abs + ".bak." + stamp
 	for i := 2; ; i++ {
@@ -113,8 +169,11 @@ func backupFile(root, abs string) (string, error) {
 		}
 		candidate = fmt.Sprintf("%s.bak.%s-%d", abs, stamp, i)
 	}
-	if err := os.WriteFile(candidate, original, 0o644); err != nil {
+	if err := os.WriteFile(candidate, original, mode); err != nil {
 		return "", fmt.Errorf("apply: write backup: %w", err)
+	}
+	if err := os.Chmod(candidate, mode); err != nil {
+		return "", fmt.Errorf("apply: preserve mode of backup: %w", err)
 	}
 	rel, err := filepath.Rel(root, candidate)
 	if err != nil {
