@@ -1,0 +1,20 @@
+--- a/f.txt
++++ b/f.txt
+@@ -7,7 +7,7 @@
+ line 0007
+ line 0008
+ line 0009
+-line 0010
++line 0010 EDITED
+ line 0011
+ line 0012
+ line 0013
+@@ -587,7 +587,7 @@
+ line 0587
+ line 0588
+ line 0589
+-line 0590
++line 0590 EDITED
+ line 0591
+ line 0592
+ line 0593

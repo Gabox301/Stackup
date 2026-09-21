@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Gabox301/Stackup/internal/merge"
@@ -219,5 +220,61 @@ func TestApplyRejectsUnknownOp(t *testing.T) {
 		{Path: "/a", Kind: merge.OpKind("Delete")},
 	}); err == nil {
 		t.Fatal("Apply() expected error for unknown op, got nil")
+	}
+}
+
+func TestApplyErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// existing is the document the ops run against.
+		existing string
+		// ops is the failing edit list.
+		ops []merge.EditOp
+		// wantSub must appear in the returned error.
+		wantSub string
+	}{
+		{
+			name:     "pointer without leading slash",
+			existing: `{"a": 1}`,
+			ops:      []merge.EditOp{{Path: "a", Kind: merge.OpSetKey, Value: []byte(`2`)}},
+			wantSub:  `invalid path "a"`,
+		},
+		{
+			name:     "setkey at document root",
+			existing: `{"a": 1}`,
+			ops:      []merge.EditOp{{Path: "", Kind: merge.OpSetKey, Value: []byte(`2`)}},
+			wantSub:  "SetKey needs a member path",
+		},
+		{
+			name:     "union array onto scalar",
+			existing: `{"a": 1}`,
+			ops:      []merge.EditOp{{Path: "/a", Kind: merge.OpUnionArray, Value: []byte(`[1, 2]`)}},
+			wantSub:  `target "/a" is not an array`,
+		},
+		{
+			name:     "union array onto object",
+			existing: `{"a": {"b": 1}}`,
+			ops:      []merge.EditOp{{Path: "/a", Kind: merge.OpUnionArray, Value: []byte(`[1]`)}},
+			wantSub:  `target "/a" is not an array`,
+		},
+		{
+			name:     "union array at root onto non-array document",
+			existing: `{"a": 1}`,
+			ops:      []merge.EditOp{{Path: "", Kind: merge.OpUnionArray, Value: []byte(`[1]`)}},
+			wantSub:  "needs an array document",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := merge.Apply([]byte(tt.existing), tt.ops); err == nil {
+				t.Fatalf("Apply() expected error containing %q, got nil", tt.wantSub)
+			} else if !strings.Contains(err.Error(), tt.wantSub) {
+				t.Errorf("Apply() error = %q, want it to contain %q", err.Error(), tt.wantSub)
+			}
+		})
 	}
 }

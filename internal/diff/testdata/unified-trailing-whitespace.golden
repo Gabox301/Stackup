@@ -1,0 +1,11 @@
+--- a/f.txt
++++ b/f.txt
+@@ -27,7 +27,7 @@
+ line 0027
+ line 0028
+ line 0029
+-line 0030
++line 0030   
+ line 0031
+ line 0032
+ line 0033
