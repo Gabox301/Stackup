@@ -751,3 +751,83 @@ func TestLaunchFailureFallbackBytesIdentical(t *testing.T) {
 		}
 	})
 }
+
+// TestInvalidPathFailsBeforeDetection proves a typo'd --path exits 1 with
+// a path-naming plain error (never exit 4), before detection runs, in both
+// text and json shapes (plain error either way, matching requireFormat).
+// The generate write path must not write anything; valid-path controls
+// still reach detection with --allow-unknown semantics unchanged.
+func TestInvalidPathFailsBeforeDetection(t *testing.T) {
+	t.Parallel()
+
+	// runErr mirrors main.go's exit mapping: exitError codes pass through,
+	// any other error is exit 1. runCLI would Fatalf on plain errors, so
+	// this leg executes the tree directly.
+	runErr := func(args []string) (string, string, int, error) {
+		t.Helper()
+		cmd := newRootCommand()
+		var stdout, stderr bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			var ee *exitError
+			if errors.As(err, &ee) {
+				return stdout.String(), stderr.String(), ee.code, err
+			}
+			return stdout.String(), stderr.String(), 1, err
+		}
+		return stdout.String(), stderr.String(), 0, nil
+	}
+
+	bad := filepath.Join(t.TempDir(), "does-not-exist")
+
+	cases := []struct {
+		name      string
+		args      []string
+		writePath bool
+	}{
+		{"detect text", []string{"detect", "--path", bad}, false},
+		{"detect json", []string{"detect", "--path", bad, "--format", "json"}, false},
+		{"generate write path", []string{"generate", "--path", bad, "--yes"}, true},
+		{"diff", []string{"diff", "--path", bad}, false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, _, code, err := runErr(tt.args)
+			if code == 4 {
+				t.Errorf("%s exit = 4, want 1 (bad path must never report unknown-stack)", tt.name)
+			}
+			if code != 1 {
+				t.Errorf("%s exit = %d, want 1 (plain error)", tt.name, code)
+			}
+			if err == nil {
+				t.Fatalf("%s returned nil error, want the path-naming failure", tt.name)
+			}
+			if !strings.Contains(err.Error(), "--path") || !strings.Contains(err.Error(), "does-not-exist") {
+				t.Errorf("%s error = %q, want it to name the bad --path", tt.name, err.Error())
+			}
+			if stdout != "" {
+				t.Errorf("%s stdout = %q, want empty (plain error, no payload, text or json)", tt.name, stdout)
+			}
+			if tt.writePath {
+				if _, statErr := os.Stat(bad); !os.IsNotExist(statErr) {
+					t.Errorf("generate write path created %q, want zero writes", bad)
+				}
+			}
+		})
+	}
+
+	t.Run("valid-path control still reaches detection", func(t *testing.T) {
+		empty := t.TempDir() // existing but empty: detection runs, exit 4
+		if _, _, code, _ := runErr([]string{"detect", "--path", empty}); code != 4 {
+			t.Errorf("detect on existing empty dir exit = %d, want 4 (unknown-stack preserved)", code)
+		}
+		if _, _, code, _ := runErr([]string{"detect", "--path", empty, "--allow-unknown"}); code != 0 {
+			t.Errorf("detect --allow-unknown on existing empty dir exit = %d, want 0", code)
+		}
+		if _, _, code, _ := runErr([]string{"detect", "--path", nodeProject(t)}); code != 0 {
+			t.Errorf("detect on valid node project exit = %d, want 0", code)
+		}
+	})
+}

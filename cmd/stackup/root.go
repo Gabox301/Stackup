@@ -94,6 +94,9 @@ Exit codes: 0 ok/no-change, 2 preview-has-changes, 3 blocked-non-interactive, 4 
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       versionString(),
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			return requireValidPath(shared.path)
+		},
 	}
 	root.PersistentFlags().StringVar(&shared.path, "path", ".", "project directory to scan")
 	root.PersistentFlags().StringVar(&shared.format, "format", "text", "output format (text|json)")
@@ -117,9 +120,27 @@ func requireFormat(format string) error {
 	return nil
 }
 
+// requireValidPath stats the scan root upfront so a typo'd --path fails
+// with exit 1 (plain error naming the bad path) before detection can
+// misreport it as exit 4 unknown-stack. Existing directories pass
+// through unchanged, preserving --allow-unknown for empty-but-real dirs.
+func requireValidPath(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("invalid --path %q: %w", path, err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("invalid --path %q: not a directory", path)
+	}
+	return nil
+}
+
 // resolveEvidence runs stack detection and prints the unknown-stack
 // notice, mapping it to exit 4. Generation stops in that case.
 func resolveEvidence(cmd *cobra.Command, shared *sharedOpts) ([]detect.Evidence, error) {
+	if err := requireValidPath(shared.path); err != nil {
+		return nil, err
+	}
 	evidences, err := detect.Detect(shared.path, shared.allowUnknown)
 	if err != nil {
 		if errors.Is(err, detect.ErrUnknownStack) {
