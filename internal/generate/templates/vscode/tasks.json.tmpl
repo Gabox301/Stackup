@@ -35,6 +35,21 @@
       "label": "cargo: test",
       "type": "shell",
       "command": "cargo test"
+    }{{- end }}{{- if .HasErlang }}{{ if $first }}{{ $first = false }}{{ else }},{{ end }}
+    {
+      "label": "rebar3: compile",
+      "type": "shell",
+      "command": "rebar3 compile"
+    },
+    {
+      "label": "rebar3: eunit",
+      "type": "shell",
+      "command": "rebar3 eunit"
+    },
+    {
+      "label": "rebar3: shell",
+      "type": "shell",
+      "command": "rebar3 shell"
     }{{- end }}
   ]
 }
