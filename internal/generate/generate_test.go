@@ -298,7 +298,7 @@ func TestUnionIdempotentRerender(t *testing.T) {
 		"ms-dotnettools.csharp",
 		"redhat.java",
 		"Shopify.ruby-lsp",
-		"pgourlain.erlang",
+		"erlang-ls.erlang-ls",
 	} {
 		if count := bytes.Count(ext, []byte(want)); count != 1 {
 			t.Errorf("extensions should contain %q exactly once, found %d in:\n%s", want, count, ext)
@@ -324,5 +324,45 @@ func TestCursorProseMentionsCSharp(t *testing.T) {
 	}
 	if bytes.Contains(mdc, []byte(`"recommendations"`)) {
 		t.Errorf("cursor rules must not contain a recommendations array, got:\n%s", mdc)
+	}
+}
+
+func TestErlangPortableNoAbsolutePaths(t *testing.T) {
+	t.Parallel()
+
+	ev := []detect.Evidence{{
+		Ecosystem:   "erlang",
+		Confidence:  detect.ConfidenceHigh,
+		Signals:     []string{"rebar.config"},
+		VersionHint: "26",
+	}}
+	plan, err := generate.Build(ev, []string{"vscode"})
+	if err != nil {
+		t.Fatalf("Build() unexpected error: %v", err)
+	}
+	settings := findFile(t, plan, ".vscode/settings.json")
+	tasks := findFile(t, plan, ".vscode/tasks.json")
+	ext := findFile(t, plan, ".vscode/extensions.json")
+
+	for _, forbidden := range []string{"Program Files", `C:\\`, "pgourlain", "erlang.erlangPath", "erlang.rebarPath", "serverPath"} {
+		for _, got := range [][]byte{settings, tasks, ext} {
+			if bytes.Contains(got, []byte(forbidden)) {
+				t.Errorf("erlang plan must not contain %q, got:\n%s", forbidden, got)
+			}
+		}
+	}
+	if count := bytes.Count(ext, []byte("erlang-ls.erlang-ls")); count != 1 {
+		t.Errorf("extensions should contain erlang-ls.erlang-ls exactly once, found %d in:\n%s", count, ext)
+	}
+	if !bytes.Contains(settings, []byte(`"[erlang]"`)) {
+		t.Errorf("settings should contain [erlang] block, got:\n%s", settings)
+	}
+	if !bytes.Contains(settings, []byte(`"editor.defaultFormatter": "erlang-ls.erlang-ls"`)) {
+		t.Errorf("settings should set erlang-ls as default formatter, got:\n%s", settings)
+	}
+	for _, want := range []string{`"rebar3: compile"`, `"rebar3: eunit"`, `"rebar3: shell"`, `"command": "rebar3 compile"`, `"type": "shell"`} {
+		if !bytes.Contains(tasks, []byte(want)) {
+			t.Errorf("tasks should contain %q, got:\n%s", want, tasks)
+		}
 	}
 }
