@@ -132,7 +132,7 @@ var vscodeExtensionRecommendations = map[string][]string{
 	"csharp": {"ms-dotnettools.csharp"},
 	"java":   {"redhat.java"},
 	"ruby":   {"Shopify.ruby-lsp"},
-	"erlang": {"pgourlain.erlang"},
+	"erlang": {"erlang-ls.erlang-ls"},
 }
 
 // frameworkExtensionRecommendations maps presence-only framework signals to
