@@ -152,7 +152,7 @@ stackup apply --force --path <project-dir>  # also overwrite existing files
 | C# (.NET)          | `*.csproj` / `*.sln` → `global.json` / `packages.lock.json`        | `ms-dotnettools.csharp`    |
 | Java               | `pom.xml` / `build.gradle` (Gradle wins on duel) → wrappers / pins | `redhat.java`              |
 | Ruby               | `Gemfile` → `Gemfile.lock` (Bundler)                               | `Shopify.ruby-lsp`         |
-| Erlang             | `rebar.config` → `rebar.lock` (rebar3)                             | `pgourlain.erlang`         |
+| Erlang             | `rebar.config` → `rebar.lock` (rebar3)                             | `erlang-ls.erlang-ls`         |
 
 Detection is root-only and polyglot-safe: a Go backend + Node frontend
 returns both evidences ranked by confidence, never a single winner.

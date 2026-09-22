@@ -150,7 +150,7 @@ stackup apply --force --path <proyecto>  # también sobrescribe existentes
 | C# (.NET)          | `*.csproj` / `*.sln` → `global.json` / `packages.lock.json`         | `ms-dotnettools.csharp`    |
 | Java               | `pom.xml` / `build.gradle` (Gradle gana el duelo) → wrappers / pins | `redhat.java`              |
 | Ruby               | `Gemfile` → `Gemfile.lock` (Bundler)                                | `Shopify.ruby-lsp`         |
-| Erlang             | `rebar.config` → `rebar.lock` (rebar3)                              | `pgourlain.erlang`         |
+| Erlang             | `rebar.config` → `rebar.lock` (rebar3)                              | `erlang-ls.erlang-ls`         |
 
 La detección es solo-raíz y políglota: un backend Go + frontend Node
 devuelve ambas evidencias ordenadas por confianza, nunca un único ganador.
