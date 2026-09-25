@@ -9,10 +9,11 @@
 // only via Options.Force. DryRun resolves the same bytes but writes
 // nothing, backing the --dry-run preview.
 //
-// Backup retention: stackup never prunes backups. Same-second reruns
+// Backup retention: apply never prunes on its own. Same-second reruns
 // dedupe with a numeric suffix, so repeated applies accumulate
-// <name>.bak.<ts>[-N] siblings next to the target; delete them yourself
-// when the pre-write image no longer matters. Overwrites preserve the
+// <name>.bak.<ts>[-N] siblings next to the target. Call PruneBackups to
+// drop old siblings and RestoreBackups to recover the pre-write images
+// recorded in a Result (or ApplyError) Backups manifest. Overwrites preserve the
 // source file mode on both the target and its backup, so restrictive
 // permissions never widen through the backup copy; fresh files are
 // created 0644 (umask applies).
@@ -23,6 +24,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/Gabox301/Stackup/internal/diff"
@@ -91,9 +94,10 @@ const timeFormat = "20060102-150405"
 // deterministic mid-plan failure without relying on OS permission bits
 // (unreliable on Windows and when running as root/administrator).
 var (
-	mkdirAllFunc  = os.MkdirAll
-	writeFileFunc = os.WriteFile
-	chmodFunc     = os.Chmod
+	mkdirAllFunc   = os.MkdirAll
+	writeFileFunc  = os.WriteFile
+	chmodFunc      = os.Chmod
+	removeFileFunc = os.Remove
 )
 
 // Apply resolves p against root and writes pending files. The whole plan
@@ -291,9 +295,8 @@ func readExisting(abs, rel string) (content []byte, mode os.FileMode, ok bool, e
 // writeOne) to a timestamped sibling and returns the root-relative backup
 // path. Same-second reruns dedupe with a counter suffix. The backup
 // inherits the source mode so restrictive permissions never widen through
-// the copy. Backups accumulate: stackup keeps every sibling and never
-// prunes; remove <name>.bak.* yourself when the pre-write image no longer
-// matters.
+// the copy. Backups accumulate: apply keeps every sibling until the caller
+// drops old ones with PruneBackups.
 func backupFile(root, abs string, original []byte, mode os.FileMode) (string, error) {
 	stamp := time.Now().UTC().Format(timeFormat)
 	candidate := abs + ".bak." + stamp
@@ -316,4 +319,151 @@ func backupFile(root, abs string, original []byte, mode os.FileMode) (string, er
 		return "", fmt.Errorf("apply: relativize backup: %w", err)
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// isBackupSuffix reports whether suffix is exactly the stamp shape
+// backupFile appends after ".bak.": YYYYMMDD-HHMMSS with an optional -N
+// dedupe counter. Anything else (notes, partial dates, trailing text) is
+// a user file that must never be pruned or restored.
+func isBackupSuffix(suffix string) bool {
+	const stampLen = len("20060102-150405")
+	if len(suffix) < stampLen {
+		return false
+	}
+	stamp, rest := suffix[:stampLen], suffix[stampLen:]
+	for i := 0; i < stampLen; i++ {
+		c := stamp[i]
+		if i == 8 {
+			if c != '-' {
+				return false
+			}
+			continue
+		}
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	if rest == "" {
+		return true
+	}
+	if len(rest) < 2 || rest[0] != '-' {
+		return false
+	}
+	for i := 1; i < len(rest); i++ {
+		if rest[i] < '0' || rest[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ListBackups returns the timestamped backup siblings of target as
+// root-relative slash paths, oldest first. Only siblings matching exactly
+// the backupFile pattern qualify; user files that merely share the
+// ".bak." prefix and non-regular files are skipped.
+func ListBackups(root, target string) ([]string, error) {
+	abs := filepath.Join(root, filepath.FromSlash(target))
+	matches, err := filepath.Glob(abs + ".bak.*")
+	if err != nil {
+		return nil, fmt.Errorf("apply: list backups of %s: %w", target, err)
+	}
+	base := filepath.Base(abs)
+	var out []string
+	for _, m := range matches {
+		suffix, ok := strings.CutPrefix(filepath.Base(m), base+".bak.")
+		if !ok || !isBackupSuffix(suffix) {
+			continue
+		}
+		fi, err := os.Stat(m)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("apply: stat backup of %s: %w", target, err)
+		}
+		if !fi.Mode().IsRegular() {
+			continue
+		}
+		rel, err := filepath.Rel(root, m)
+		if err != nil {
+			return nil, fmt.Errorf("apply: relativize backup: %w", err)
+		}
+		out = append(out, filepath.ToSlash(rel))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// PruneBackups deletes backup siblings of target, keeping the newest keep.
+// A negative keep is an error; keep zero removes every backup sibling.
+// Only exact-pattern siblings qualify, so user files are never deleted.
+// It returns the deleted root-relative slash paths, oldest first; on a
+// remove failure it returns the paths deleted so far with the error.
+func PruneBackups(root, target string, keep int) ([]string, error) {
+	if keep < 0 {
+		return nil, fmt.Errorf("apply: prune %s: keep must be >= 0, got %d", target, keep)
+	}
+	listed, err := ListBackups(root, target)
+	if err != nil {
+		return nil, err
+	}
+	if len(listed) <= keep {
+		return nil, nil
+	}
+	var deleted []string
+	for _, rel := range listed[:len(listed)-keep] {
+		if err := removeFileFunc(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			return deleted, fmt.Errorf("apply: prune %s: %w", rel, err)
+		}
+		deleted = append(deleted, rel)
+	}
+	return deleted, nil
+}
+
+// RestoreFile copies the backup sibling back over target, preserving the
+// backup mode on the target. The backup must be an exact-pattern sibling
+// of the target; anything else fails instead of copying an arbitrary file
+// over user data.
+func RestoreFile(root, target, backup string) error {
+	targetAbs := filepath.Join(root, filepath.FromSlash(target))
+	backupAbs := filepath.Join(root, filepath.FromSlash(backup))
+	suffix, ok := strings.CutPrefix(filepath.Base(backupAbs), filepath.Base(targetAbs)+".bak.")
+	if !ok || !isBackupSuffix(suffix) {
+		return fmt.Errorf("apply: restore %s: %s is not a backup of %s", target, backup, target)
+	}
+	if filepath.Dir(backupAbs) != filepath.Dir(targetAbs) {
+		return fmt.Errorf("apply: restore %s: backup %s is not a sibling", target, backup)
+	}
+	content, mode, ok, err := readExisting(backupAbs, backup)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("apply: restore %s: backup %s not found", target, backup)
+	}
+	if err := writeFileFunc(targetAbs, content, mode); err != nil {
+		return fmt.Errorf("apply: restore %s: %w", target, err)
+	}
+	if err := chmodFunc(targetAbs, mode); err != nil {
+		return fmt.Errorf("apply: preserve mode of %s: %w", target, err)
+	}
+	return nil
+}
+
+// RestoreBackups recovers every entry of a Backups manifest (Result or
+// ApplyError) in deterministic target order, stopping at the first
+// failure. The manifest itself is unchanged, so a failure can be retried
+// after fixing the cause. A nil or empty manifest is a no-op.
+func RestoreBackups(root string, backups map[string]string) error {
+	targets := make([]string, 0, len(backups))
+	for target := range backups {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	for _, target := range targets {
+		if err := RestoreFile(root, target, backups[target]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -347,3 +347,153 @@ func TestApplyPreservesFileMode(t *testing.T) {
 			bakInfo.Mode().Perm(), before.Mode().Perm())
 	}
 }
+
+func TestPruneBackupsKeepsNewestAndSparesUserFiles(t *testing.T) {
+	t.Parallel()
+
+	const target = "cfg/settings.json"
+	root := t.TempDir()
+	seed(t, root, target, "{}\n")
+	oldest := target + ".bak.20240101-120000"
+	middle := target + ".bak.20240102-120000"
+	newest := target + ".bak.20240103-120000"
+	for _, rel := range []string{oldest, middle, newest} {
+		seed(t, root, rel, "{\"v\": 1}\n")
+	}
+	decoys := []string{
+		target + ".bak.notes",
+		target + ".bak.20240101",
+		target + ".bak.20240101-12000a",
+		target + ".bak.20240101-120000-draft",
+	}
+	for _, rel := range decoys {
+		seed(t, root, rel, "user file\n")
+	}
+
+	deleted, err := apply.PruneBackups(root, target, 1)
+	if err != nil {
+		t.Fatalf("PruneBackups() unexpected error: %v", err)
+	}
+	if len(deleted) != 2 || deleted[0] != oldest || deleted[1] != middle {
+		t.Errorf("PruneBackups() deleted %v, want [%s %s] oldest first", deleted, oldest, middle)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(newest))); err != nil {
+		t.Errorf("PruneBackups() removed the newest backup %s: %v", newest, err)
+	}
+	for _, rel := range decoys {
+		if got := read(t, root, rel); got != "user file\n" {
+			t.Errorf("PruneBackups() touched user file %s, want it spared", rel)
+		}
+	}
+	if got := read(t, root, target); got != "{}\n" {
+		t.Errorf("PruneBackups() modified the target:\n%s", got)
+	}
+}
+
+func TestPruneBackupsMatchesOnlyExactStampShape(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		sibling     string
+		wantDeleted bool
+	}{
+		{"plain stamp", ".bak.20240101-120000", true},
+		{"dedupe counter", ".bak.20240101-120000-2", true},
+		{"large counter", ".bak.20240101-120000-25", true},
+		{"free text", ".bak.notes", false},
+		{"date only", ".bak.20240101", false},
+		{"non-digit stamp", ".bak.20240101-12000a", false},
+		{"missing dash", ".bak.20240101120000", false},
+		{"trailing text", ".bak.20240101-120000-draft", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			const target = "cfg/settings.json"
+			root := t.TempDir()
+			seed(t, root, target, "{}\n")
+			seed(t, root, target+tc.sibling, "sibling\n")
+			deleted, err := apply.PruneBackups(root, target, 0)
+			if err != nil {
+				t.Fatalf("PruneBackups() unexpected error: %v", err)
+			}
+			if tc.wantDeleted && len(deleted) != 1 {
+				t.Errorf("PruneBackups() deleted %v, want the exact-pattern sibling removed", deleted)
+			}
+			if !tc.wantDeleted {
+				if len(deleted) != 0 {
+					t.Errorf("PruneBackups() deleted %v, want user file spared", deleted)
+				}
+				if got := read(t, root, target+tc.sibling); got != "sibling\n" {
+					t.Errorf("PruneBackups() touched user file %s", target+tc.sibling)
+				}
+			}
+		})
+	}
+}
+
+func TestPruneBackupsRejectsNegativeKeep(t *testing.T) {
+	t.Parallel()
+
+	const target = "cfg/settings.json"
+	root := t.TempDir()
+	seed(t, root, target, "{}\n")
+	seed(t, root, target+".bak.20240101-120000", "backup\n")
+	if _, err := apply.PruneBackups(root, target, -1); err == nil {
+		t.Error("PruneBackups() with negative keep succeeded, want an error")
+	}
+	if got := read(t, root, target+".bak.20240101-120000"); got != "backup\n" {
+		t.Error("PruneBackups() deleted a backup on invalid input, want no writes")
+	}
+}
+
+func TestRestoreBackupsRecoversManifest(t *testing.T) {
+	t.Parallel()
+
+	const target = "notes.txt"
+	const original = "original bytes\n"
+	root := t.TempDir()
+	seed(t, root, target, original)
+	plan := generate.Plan{Files: []generate.FileOp{
+		{Path: target, Content: []byte("updated bytes\n"), JSON: false},
+	}}
+	res, err := apply.Apply(root, plan, apply.Options{})
+	if err != nil {
+		t.Fatalf("Apply() unexpected error: %v", err)
+	}
+	bak, ok := res.Backups[target]
+	if !ok || bak == "" {
+		t.Fatalf("Apply() result omits the backup entry for %s", target)
+	}
+	// Simulate operator damage after a bad apply.
+	seed(t, root, target, "damaged bytes\n")
+	if err := apply.RestoreBackups(root, res.Backups); err != nil {
+		t.Fatalf("RestoreBackups() unexpected error: %v", err)
+	}
+	if got := read(t, root, target); got != original {
+		t.Errorf("RestoreBackups() target =\n%s\nwant the pre-write image:\n%s", got, original)
+	}
+	if got := read(t, root, bak); got != original {
+		t.Errorf("RestoreBackups() consumed the backup sibling, want it kept:\n%s", got)
+	}
+	if err := apply.RestoreBackups(root, nil); err != nil {
+		t.Errorf("RestoreBackups(nil) unexpected error: %v", err)
+	}
+}
+
+func TestRestoreFileRejectsNonBackup(t *testing.T) {
+	t.Parallel()
+
+	const target = "notes.txt"
+	root := t.TempDir()
+	seed(t, root, target, "current\n")
+	seed(t, root, "other.txt", "unrelated\n")
+	if err := apply.RestoreFile(root, target, "other.txt"); err == nil {
+		t.Error("RestoreFile() copied an arbitrary file, want a pattern error")
+	}
+	if got := read(t, root, target); got != "current\n" {
+		t.Errorf("RestoreFile() modified the target on error:\n%s", got)
+	}
+}
