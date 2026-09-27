@@ -659,6 +659,84 @@ func TestDetectPHP(t *testing.T) {
 	}
 }
 
+func TestDetectTerraform(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with required_version hint",
+			setup:          func(t *testing.T) string { return copyFixture(t, "terraform") },
+			wantConfidence: detect.ConfidenceMedium,
+			wantVersion:    ">= 1.5.0",
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "terraform-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+			wantVersion:    ">= 1.5.0",
+		},
+		{
+			name: "hint alone grades low",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".terraform-version", "1.9.0\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "1.9.0",
+		},
+		{
+			name: "terraform-version prefers over required_version",
+			setup: func(t *testing.T) string {
+				dir := copyFixture(t, "terraform")
+				writeFile(t, dir, ".terraform-version", "1.9.0\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+			wantVersion:    "1.9.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "terraform" {
+					found = &got[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want terraform", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() terraform confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() terraform VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() terraform returned no signals")
+			}
+		})
+	}
+}
+
 func TestDetectFrameworks(t *testing.T) {
 	t.Parallel()
 
