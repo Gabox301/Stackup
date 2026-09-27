@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Gabox301/Stackup/internal/detect"
@@ -816,6 +817,143 @@ func TestDetectDeno(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDetectNested(t *testing.T) {
+	t.Parallel()
+
+	slash := func(elem ...string) string {
+		return filepath.ToSlash(filepath.Join(elem...))
+	}
+
+	t.Run("monorepo reports root and nested stacks with prefixed signals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "go.mod", "module example.com/demo\n\ngo 1.23.0\n")
+		writeFile(t, dir, "go.sum", "example.com/dep v1.0.0 h1:AAA=\n")
+		writeFile(t, dir, "frontend/package.json", `{"name":"demo"}`)
+		writeFile(t, dir, "frontend/package-lock.json", `{}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"node", "go"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [node go]", ecosystems(got))
+		}
+		for _, ev := range got {
+			if ev.Confidence != detect.ConfidenceHigh {
+				t.Errorf("Detect() %s confidence = %v, want high", ev.Ecosystem, ev.Confidence)
+			}
+		}
+		for _, ev := range got {
+			if ev.Ecosystem != "node" {
+				continue
+			}
+			want := []string{slash("frontend", "package.json"), slash("frontend", "package-lock.json")}
+			if !equalStrings(ev.Signals, want) {
+				t.Errorf("Detect() node Signals = %v, want %v", ev.Signals, want)
+			}
+		}
+	})
+
+	t.Run("nested-only manifest detected", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "api/composer.json", `{"name":"demo/api","require":{"php":">=8.1"}}`)
+		writeFile(t, dir, "api/composer.lock", `{"packages":[]}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"php"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [php]", ecosystems(got))
+		}
+		ev := got[0]
+		if ev.Confidence != detect.ConfidenceHigh {
+			t.Errorf("Detect() php confidence = %v, want high", ev.Confidence)
+		}
+		want := []string{slash("api", "composer.json"), slash("api", "composer.lock")}
+		if !equalStrings(ev.Signals, want) {
+			t.Errorf("Detect() php Signals = %v, want %v", ev.Signals, want)
+		}
+	})
+
+	t.Run("root wins confidence ties with bare signals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "package.json", `{"name":"demo"}`)
+		writeFile(t, dir, "sub/package.json", `{"name":"nested","dependencies":{"next":"^14.0.0"}}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		count := 0
+		for _, ev := range got {
+			if ev.Ecosystem != "node" {
+				continue
+			}
+			count++
+			if ev.Confidence != detect.ConfidenceMedium {
+				t.Errorf("Detect() node confidence = %v, want medium", ev.Confidence)
+			}
+			if !equalStrings(ev.Signals, []string{"package.json"}) {
+				t.Errorf("Detect() node Signals = %v, want bare root signals", ev.Signals)
+			}
+			if len(ev.Frameworks) != 0 {
+				t.Errorf("Detect() node Frameworks = %v, want root evidence without nested frameworks", ev.Frameworks)
+			}
+		}
+		if count != 1 {
+			t.Errorf("Detect() returned %d node evidences, want 1 (dedupe)", count)
+		}
+	})
+
+	t.Run("scan stops at max depth", func(t *testing.T) {
+		t.Parallel()
+		beyond := t.TempDir()
+		writeFile(t, beyond, slash("a", "b", "c", "d", "package.json"), `{"name":"too-deep"}`)
+		if _, err := detect.Detect(beyond, false); !errors.Is(err, detect.ErrUnknownStack) {
+			t.Errorf("Detect() beyond max depth error = %v, want unknown-stack", err)
+		}
+
+		atLimit := t.TempDir()
+		writeFile(t, atLimit, slash("a", "b", "c", "package.json"), `{"name":"nested"}`)
+		got, err := detect.Detect(atLimit, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"node"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [node]", ecosystems(got))
+		}
+		want := []string{slash("a", "b", "c", "package.json")}
+		if !equalStrings(got[0].Signals, want) {
+			t.Errorf("Detect() node Signals = %v, want %v", got[0].Signals, want)
+		}
+	})
+
+	t.Run("symlinked dirs never scanned", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink creation needs privileges on Windows")
+		}
+		outside := t.TempDir()
+		writeFile(t, outside, "package.json", `{"name":"demo"}`)
+		dir := t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(dir, "link")); err != nil {
+			t.Skipf("symlink unsupported: %v", err)
+		}
+
+		got, err := detect.Detect(dir, true)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("Detect() through symlink returned %v, want no evidence", ecosystems(got))
+		}
+	})
 }
 
 func TestDetectFrameworks(t *testing.T) {
