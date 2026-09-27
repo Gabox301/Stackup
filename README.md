@@ -124,6 +124,7 @@ stackup apply --force --path <project-dir>  # also overwrite existing files
 --force                 allow overwriting existing files (backup still taken)
 --yes, --non-interactive  skip all prompts (CI mode)
 --allow-unknown         proceed even when no stack is detected
+--backup-dir <dir> / --keep N / --restore [file]  manage backups: redirect, prune, revive
 ```
 
 #### Exit codes
