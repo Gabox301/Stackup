@@ -46,3 +46,29 @@ changelog:
       - '^docs:'
       - '^test:'
       - '^chore:'
+
+brews:
+  - name: stackup
+    repository:
+      owner: Gabox301
+      name: homebrew-stackup
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
+    homepage: https://github.com/Gabox301/Stackup
+    description: Detect your project's stack and generate IDE configs for it.
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: goreleaser@carlosbecker.com
+
+scoops:
+  - name: stackup
+    repository:
+      owner: Gabox301
+      name: scoop-bucket
+      token: '{{ .Env.SCOOP_BUCKET_TOKEN }}'
+    homepage: https://github.com/Gabox301/Stackup
+    description: Detect your project's stack and generate IDE configs for it.
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: goreleaser@carlosbecker.com
