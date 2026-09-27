@@ -370,7 +370,7 @@ func TestPruneBackupsKeepsNewestAndSparesUserFiles(t *testing.T) {
 		seed(t, root, rel, "user file\n")
 	}
 
-	deleted, err := apply.PruneBackups(root, target, 1)
+	deleted, err := apply.PruneBackups(root, target, 1, "")
 	if err != nil {
 		t.Fatalf("PruneBackups() unexpected error: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestPruneBackupsMatchesOnlyExactStampShape(t *testing.T) {
 			root := t.TempDir()
 			seed(t, root, target, "{}\n")
 			seed(t, root, target+tc.sibling, "sibling\n")
-			deleted, err := apply.PruneBackups(root, target, 0)
+			deleted, err := apply.PruneBackups(root, target, 0, "")
 			if err != nil {
 				t.Fatalf("PruneBackups() unexpected error: %v", err)
 			}
@@ -441,7 +441,7 @@ func TestPruneBackupsRejectsNegativeKeep(t *testing.T) {
 	root := t.TempDir()
 	seed(t, root, target, "{}\n")
 	seed(t, root, target+".bak.20240101-120000", "backup\n")
-	if _, err := apply.PruneBackups(root, target, -1); err == nil {
+	if _, err := apply.PruneBackups(root, target, -1, ""); err == nil {
 		t.Error("PruneBackups() with negative keep succeeded, want an error")
 	}
 	if got := read(t, root, target+".bak.20240101-120000"); got != "backup\n" {
@@ -469,7 +469,7 @@ func TestRestoreBackupsRecoversManifest(t *testing.T) {
 	}
 	// Simulate operator damage after a bad apply.
 	seed(t, root, target, "damaged bytes\n")
-	if err := apply.RestoreBackups(root, res.Backups); err != nil {
+	if err := apply.RestoreBackups(root, res.Backups, ""); err != nil {
 		t.Fatalf("RestoreBackups() unexpected error: %v", err)
 	}
 	if got := read(t, root, target); got != original {
@@ -478,7 +478,7 @@ func TestRestoreBackupsRecoversManifest(t *testing.T) {
 	if got := read(t, root, bak); got != original {
 		t.Errorf("RestoreBackups() consumed the backup sibling, want it kept:\n%s", got)
 	}
-	if err := apply.RestoreBackups(root, nil); err != nil {
+	if err := apply.RestoreBackups(root, nil, ""); err != nil {
 		t.Errorf("RestoreBackups(nil) unexpected error: %v", err)
 	}
 }
@@ -490,7 +490,7 @@ func TestRestoreFileRejectsNonBackup(t *testing.T) {
 	root := t.TempDir()
 	seed(t, root, target, "current\n")
 	seed(t, root, "other.txt", "unrelated\n")
-	if err := apply.RestoreFile(root, target, "other.txt"); err == nil {
+	if err := apply.RestoreFile(root, target, "other.txt", ""); err == nil {
 		t.Error("RestoreFile() copied an arbitrary file, want a pattern error")
 	}
 	if got := read(t, root, target); got != "current\n" {
