@@ -43,7 +43,7 @@ O instalá con un gestor de paquetes (disponible desde el próximo release versi
 
 ```sh
 brew tap Gabox301/homebrew-stackup
-brew install stackup
+brew install --cask Gabox301/homebrew-stackup/stackup
 ```
 
 ```powershell
