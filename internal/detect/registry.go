@@ -37,6 +37,7 @@ func DefaultRegistry() *Registry {
 		ErlangDetector{},
 		PHPDetector{},
 		TerraformDetector{},
+		DenoDetector{},
 	)
 }
 

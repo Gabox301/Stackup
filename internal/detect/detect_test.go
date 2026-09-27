@@ -737,6 +737,87 @@ func TestDetectTerraform(t *testing.T) {
 	}
 }
 
+func TestDetectDeno(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with deno manager",
+			setup:          func(t *testing.T) string { return copyFixture(t, "deno") },
+			wantConfidence: detect.ConfidenceMedium,
+		},
+		{
+			name: "jsonc manifest grades medium",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, "deno.jsonc", "{}\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "deno-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+		},
+		{
+			name: "hint alone grades low without node overlap",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".node-version", "22\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "22",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "deno" {
+					found = &got[i]
+					break
+				}
+				if got[i].Ecosystem == "node" {
+					t.Fatalf("Detect() returned node evidence %v, want Deno to own .node-version", got[i])
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want deno", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() deno confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if found.Confidence != detect.ConfidenceLow && found.PackageManager != "deno" {
+				t.Errorf("Detect() deno PackageManager = %q, want %q", found.PackageManager, "deno")
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() deno VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() deno returned no signals")
+			}
+		})
+	}
+}
+
 func TestDetectFrameworks(t *testing.T) {
 	t.Parallel()
 
