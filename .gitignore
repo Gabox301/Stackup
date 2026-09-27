@@ -31,3 +31,6 @@ node_modules/
 # Local tool
 .atl
 odd
+
+# Stackup apply backup siblings (<name>.bak.YYYYMMDD-HHMMSS[-N])
+*.bak.*
