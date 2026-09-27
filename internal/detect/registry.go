@@ -35,6 +35,7 @@ func DefaultRegistry() *Registry {
 		JavaDetector{},
 		RubyDetector{},
 		ErlangDetector{},
+		PHPDetector{},
 	)
 }
 

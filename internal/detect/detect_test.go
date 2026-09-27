@@ -573,6 +573,92 @@ func TestDetectBun(t *testing.T) {
 	}
 }
 
+func TestDetectPHP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantPM is the expected package manager ("" skips the check).
+		wantPM string
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with composer and require.php hint",
+			setup:          func(t *testing.T) string { return copyFixture(t, "php") },
+			wantConfidence: detect.ConfidenceMedium,
+			wantPM:         "composer",
+			wantVersion:    ">=8.1",
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "php-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+			wantPM:         "composer",
+			wantVersion:    ">=8.1",
+		},
+		{
+			name: "hint alone grades low",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".php-version", "8.2\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "8.2",
+		},
+		{
+			name: "php-version prefers over require.php",
+			setup: func(t *testing.T) string {
+				dir := copyFixture(t, "php")
+				writeFile(t, dir, ".php-version", "8.2\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+			wantPM:         "composer",
+			wantVersion:    "8.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "php" {
+					found = &got[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want php", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() php confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if tt.wantPM != "" && found.PackageManager != tt.wantPM {
+				t.Errorf("Detect() php PackageManager = %q, want %q", found.PackageManager, tt.wantPM)
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() php VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() php returned no signals")
+			}
+		})
+	}
+}
+
 func TestDetectFrameworks(t *testing.T) {
 	t.Parallel()
 
