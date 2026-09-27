@@ -70,21 +70,24 @@ type stackInfo struct {
 
 // templateData is the model passed to every embedded template.
 type templateData struct {
-	Stacks      []stackInfo
-	StackList   string
-	Generic     bool
-	HasNode     bool
-	HasGo       bool
-	HasPython   bool
-	HasRust     bool
-	HasCSharp   bool
-	HasJava     bool
-	HasRuby     bool
-	HasErlang   bool
-	HasBun      bool
-	Frameworks  []string
-	Extensions  []string
-	StackCounts int
+	Stacks       []stackInfo
+	StackList    string
+	Generic      bool
+	HasNode      bool
+	HasGo        bool
+	HasPython    bool
+	HasRust      bool
+	HasCSharp    bool
+	HasJava      bool
+	HasRuby      bool
+	HasErlang    bool
+	HasPHP       bool
+	HasTerraform bool
+	HasDeno      bool
+	HasBun       bool
+	Frameworks   []string
+	Extensions   []string
+	StackCounts  int
 }
 
 // templateTarget binds an embedded template to a plan output path.
@@ -125,14 +128,17 @@ var ideTargets = map[string][]templateTarget{
 // Exact verified casings required; forbidden IDs (rebornix.Ruby,
 // octref.vetur, rust-lang.rust, JamesBirtles.svelte-vscode) never enter.
 var vscodeExtensionRecommendations = map[string][]string{
-	"node":   {"dbaeumer.vscode-eslint"},
-	"go":     {"golang.go"},
-	"python": {"ms-python.python"},
-	"rust":   {"rust-lang.rust-analyzer"},
-	"csharp": {"ms-dotnettools.csharp"},
-	"java":   {"redhat.java"},
-	"ruby":   {"Shopify.ruby-lsp"},
-	"erlang": {"erlang-ls.erlang-ls"},
+	"node":      {"dbaeumer.vscode-eslint"},
+	"go":        {"golang.go"},
+	"python":    {"ms-python.python"},
+	"rust":      {"rust-lang.rust-analyzer"},
+	"csharp":    {"ms-dotnettools.csharp"},
+	"java":      {"redhat.java"},
+	"ruby":      {"Shopify.ruby-lsp"},
+	"erlang":    {"erlang-ls.erlang-ls"},
+	"php":       {"bmewburn.vscode-intelephense-client"},
+	"terraform": {"hashicorp.terraform"},
+	"deno":      {"denoland.vscode-deno"},
 }
 
 // frameworkExtensionRecommendations maps presence-only framework signals to
@@ -213,6 +219,12 @@ func buildData(evidences []detect.Evidence) templateData {
 			data.HasRuby = true
 		case "erlang":
 			data.HasErlang = true
+		case "php":
+			data.HasPHP = true
+		case "terraform":
+			data.HasTerraform = true
+		case "deno":
+			data.HasDeno = true
 		}
 		if ev.Runtime == "bun" {
 			data.HasBun = true
