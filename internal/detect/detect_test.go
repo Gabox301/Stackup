@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Gabox301/Stackup/internal/detect"
@@ -571,6 +572,388 @@ func TestDetectBun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDetectPHP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantPM is the expected package manager ("" skips the check).
+		wantPM string
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with composer and require.php hint",
+			setup:          func(t *testing.T) string { return copyFixture(t, "php") },
+			wantConfidence: detect.ConfidenceMedium,
+			wantPM:         "composer",
+			wantVersion:    ">=8.1",
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "php-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+			wantPM:         "composer",
+			wantVersion:    ">=8.1",
+		},
+		{
+			name: "hint alone grades low",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".php-version", "8.2\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "8.2",
+		},
+		{
+			name: "php-version prefers over require.php",
+			setup: func(t *testing.T) string {
+				dir := copyFixture(t, "php")
+				writeFile(t, dir, ".php-version", "8.2\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+			wantPM:         "composer",
+			wantVersion:    "8.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "php" {
+					found = &got[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want php", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() php confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if tt.wantPM != "" && found.PackageManager != tt.wantPM {
+				t.Errorf("Detect() php PackageManager = %q, want %q", found.PackageManager, tt.wantPM)
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() php VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() php returned no signals")
+			}
+		})
+	}
+}
+
+func TestDetectTerraform(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with required_version hint",
+			setup:          func(t *testing.T) string { return copyFixture(t, "terraform") },
+			wantConfidence: detect.ConfidenceMedium,
+			wantVersion:    ">= 1.5.0",
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "terraform-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+			wantVersion:    ">= 1.5.0",
+		},
+		{
+			name: "hint alone grades low",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".terraform-version", "1.9.0\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "1.9.0",
+		},
+		{
+			name: "terraform-version prefers over required_version",
+			setup: func(t *testing.T) string {
+				dir := copyFixture(t, "terraform")
+				writeFile(t, dir, ".terraform-version", "1.9.0\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+			wantVersion:    "1.9.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "terraform" {
+					found = &got[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want terraform", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() terraform confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() terraform VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() terraform returned no signals")
+			}
+		})
+	}
+}
+
+func TestDetectDeno(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup builds the scanned directory and returns its path.
+		setup func(t *testing.T) string
+		// wantConfidence is the expected grade.
+		wantConfidence detect.Confidence
+		// wantVersion is the expected version hint ("" skips the check).
+		wantVersion string
+	}{
+		{
+			name:           "manifest alone grades medium with deno manager",
+			setup:          func(t *testing.T) string { return copyFixture(t, "deno") },
+			wantConfidence: detect.ConfidenceMedium,
+		},
+		{
+			name: "jsonc manifest grades medium",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, "deno.jsonc", "{}\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceMedium,
+		},
+		{
+			name:           "lockfile grades high",
+			setup:          func(t *testing.T) string { return copyFixture(t, "deno-lock") },
+			wantConfidence: detect.ConfidenceHigh,
+		},
+		{
+			name: "hint alone grades low without node overlap",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, dir, ".node-version", "22\n")
+				return dir
+			},
+			wantConfidence: detect.ConfidenceLow,
+			wantVersion:    "22",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := tt.setup(t)
+
+			got, err := detect.Detect(dir, false)
+			if err != nil {
+				t.Fatalf("Detect() unexpected error: %v", err)
+			}
+			var found *detect.Evidence
+			for i := range got {
+				if got[i].Ecosystem == "deno" {
+					found = &got[i]
+					break
+				}
+				if got[i].Ecosystem == "node" {
+					t.Fatalf("Detect() returned node evidence %v, want Deno to own .node-version", got[i])
+				}
+			}
+			if found == nil {
+				t.Fatalf("Detect() ecosystems = %v, want deno", ecosystems(got))
+			}
+			if found.Confidence != tt.wantConfidence {
+				t.Errorf("Detect() deno confidence = %v, want %v", found.Confidence, tt.wantConfidence)
+			}
+			if found.Confidence != detect.ConfidenceLow && found.PackageManager != "deno" {
+				t.Errorf("Detect() deno PackageManager = %q, want %q", found.PackageManager, "deno")
+			}
+			if tt.wantVersion != "" && found.VersionHint != tt.wantVersion {
+				t.Errorf("Detect() deno VersionHint = %q, want %q", found.VersionHint, tt.wantVersion)
+			}
+			if len(found.Signals) == 0 {
+				t.Errorf("Detect() deno returned no signals")
+			}
+		})
+	}
+}
+
+func TestDetectNested(t *testing.T) {
+	t.Parallel()
+
+	slash := func(elem ...string) string {
+		return filepath.ToSlash(filepath.Join(elem...))
+	}
+
+	t.Run("monorepo reports root and nested stacks with prefixed signals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "go.mod", "module example.com/demo\n\ngo 1.23.0\n")
+		writeFile(t, dir, "go.sum", "example.com/dep v1.0.0 h1:AAA=\n")
+		writeFile(t, dir, "frontend/package.json", `{"name":"demo"}`)
+		writeFile(t, dir, "frontend/package-lock.json", `{}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"node", "go"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [node go]", ecosystems(got))
+		}
+		for _, ev := range got {
+			if ev.Confidence != detect.ConfidenceHigh {
+				t.Errorf("Detect() %s confidence = %v, want high", ev.Ecosystem, ev.Confidence)
+			}
+		}
+		for _, ev := range got {
+			if ev.Ecosystem != "node" {
+				continue
+			}
+			want := []string{slash("frontend", "package.json"), slash("frontend", "package-lock.json")}
+			if !equalStrings(ev.Signals, want) {
+				t.Errorf("Detect() node Signals = %v, want %v", ev.Signals, want)
+			}
+		}
+	})
+
+	t.Run("nested-only manifest detected", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "api/composer.json", `{"name":"demo/api","require":{"php":">=8.1"}}`)
+		writeFile(t, dir, "api/composer.lock", `{"packages":[]}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"php"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [php]", ecosystems(got))
+		}
+		ev := got[0]
+		if ev.Confidence != detect.ConfidenceHigh {
+			t.Errorf("Detect() php confidence = %v, want high", ev.Confidence)
+		}
+		want := []string{slash("api", "composer.json"), slash("api", "composer.lock")}
+		if !equalStrings(ev.Signals, want) {
+			t.Errorf("Detect() php Signals = %v, want %v", ev.Signals, want)
+		}
+	})
+
+	t.Run("root wins confidence ties with bare signals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeFile(t, dir, "package.json", `{"name":"demo"}`)
+		writeFile(t, dir, "sub/package.json", `{"name":"nested","dependencies":{"next":"^14.0.0"}}`)
+
+		got, err := detect.Detect(dir, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		count := 0
+		for _, ev := range got {
+			if ev.Ecosystem != "node" {
+				continue
+			}
+			count++
+			if ev.Confidence != detect.ConfidenceMedium {
+				t.Errorf("Detect() node confidence = %v, want medium", ev.Confidence)
+			}
+			if !equalStrings(ev.Signals, []string{"package.json"}) {
+				t.Errorf("Detect() node Signals = %v, want bare root signals", ev.Signals)
+			}
+			if len(ev.Frameworks) != 0 {
+				t.Errorf("Detect() node Frameworks = %v, want root evidence without nested frameworks", ev.Frameworks)
+			}
+		}
+		if count != 1 {
+			t.Errorf("Detect() returned %d node evidences, want 1 (dedupe)", count)
+		}
+	})
+
+	t.Run("scan stops at max depth", func(t *testing.T) {
+		t.Parallel()
+		beyond := t.TempDir()
+		writeFile(t, beyond, slash("a", "b", "c", "d", "package.json"), `{"name":"too-deep"}`)
+		if _, err := detect.Detect(beyond, false); !errors.Is(err, detect.ErrUnknownStack) {
+			t.Errorf("Detect() beyond max depth error = %v, want unknown-stack", err)
+		}
+
+		atLimit := t.TempDir()
+		writeFile(t, atLimit, slash("a", "b", "c", "package.json"), `{"name":"nested"}`)
+		got, err := detect.Detect(atLimit, false)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if !equalStrings(ecosystems(got), []string{"node"}) {
+			t.Fatalf("Detect() ecosystems = %v, want [node]", ecosystems(got))
+		}
+		want := []string{slash("a", "b", "c", "package.json")}
+		if !equalStrings(got[0].Signals, want) {
+			t.Errorf("Detect() node Signals = %v, want %v", got[0].Signals, want)
+		}
+	})
+
+	t.Run("symlinked dirs never scanned", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink creation needs privileges on Windows")
+		}
+		outside := t.TempDir()
+		writeFile(t, outside, "package.json", `{"name":"demo"}`)
+		dir := t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(dir, "link")); err != nil {
+			t.Skipf("symlink unsupported: %v", err)
+		}
+
+		got, err := detect.Detect(dir, true)
+		if err != nil {
+			t.Fatalf("Detect() unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("Detect() through symlink returned %v, want no evidence", ecosystems(got))
+		}
+	})
 }
 
 func TestDetectFrameworks(t *testing.T) {

@@ -306,6 +306,68 @@ func TestUnionIdempotentRerender(t *testing.T) {
 	}
 }
 
+func TestNewStacksEmitRecommendations(t *testing.T) {
+	t.Parallel()
+
+	ev := []detect.Evidence{
+		{
+			Ecosystem:      "php",
+			Confidence:     detect.ConfidenceHigh,
+			Signals:        []string{"composer.json", "composer.lock"},
+			VersionHint:    ">=8.1",
+			PackageManager: "composer",
+		},
+		{
+			Ecosystem:   "terraform",
+			Confidence:  detect.ConfidenceMedium,
+			Signals:     []string{"main.tf"},
+			VersionHint: ">= 1.5.0",
+		},
+		{
+			Ecosystem:      "deno",
+			Confidence:     detect.ConfidenceMedium,
+			Signals:        []string{"deno.json"},
+			PackageManager: "deno",
+		},
+	}
+	plan, err := generate.Build(ev, nil)
+	if err != nil {
+		t.Fatalf("Build() unexpected error: %v", err)
+	}
+	ext := findFile(t, plan, ".vscode/extensions.json")
+	for _, want := range []string{
+		"bmewburn.vscode-intelephense-client",
+		"hashicorp.terraform",
+		"denoland.vscode-deno",
+	} {
+		if count := bytes.Count(ext, []byte(want)); count != 1 {
+			t.Errorf("extensions should contain %q exactly once, found %d in:\n%s", want, count, ext)
+		}
+	}
+	// New stacks follow the csharp/java/ruby precedent: prose-only outside
+	// VS Code recommendations, no settings/tasks/launch blocks.
+	for _, path := range []string{".cursor/rules/stackup.mdc", ".devin/rules/stackup.md", ".kiro/steering/tech.md"} {
+		prose := findFile(t, plan, path)
+		for _, want := range []string{
+			"bmewburn.vscode-intelephense-client",
+			"hashicorp.terraform",
+			"denoland.vscode-deno",
+		} {
+			if !bytes.Contains(prose, []byte(want)) {
+				t.Errorf("%s should mention %q in prose, got:\n%s", path, want, prose)
+			}
+		}
+	}
+	for _, path := range []string{".vscode/settings.json", ".vscode/tasks.json", ".vscode/launch.json"} {
+		got := findFile(t, plan, path)
+		for _, unwanted := range []string{"intelephense", "terraform", "deno"} {
+			if bytes.Contains(got, []byte(unwanted)) {
+				t.Errorf("%s should stay stack-agnostic for prose-only stacks, found %q in:\n%s", path, unwanted, got)
+			}
+		}
+	}
+}
+
 func TestCursorProseMentionsCSharp(t *testing.T) {
 	t.Parallel()
 
