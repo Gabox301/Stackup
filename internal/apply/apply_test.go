@@ -370,7 +370,7 @@ func TestPruneBackupsKeepsNewestAndSparesUserFiles(t *testing.T) {
 		seed(t, root, rel, "user file\n")
 	}
 
-	deleted, err := apply.PruneBackups(root, target, 1)
+	deleted, err := apply.PruneBackups(root, target, 1, "")
 	if err != nil {
 		t.Fatalf("PruneBackups() unexpected error: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestPruneBackupsMatchesOnlyExactStampShape(t *testing.T) {
 			root := t.TempDir()
 			seed(t, root, target, "{}\n")
 			seed(t, root, target+tc.sibling, "sibling\n")
-			deleted, err := apply.PruneBackups(root, target, 0)
+			deleted, err := apply.PruneBackups(root, target, 0, "")
 			if err != nil {
 				t.Fatalf("PruneBackups() unexpected error: %v", err)
 			}
@@ -441,7 +441,7 @@ func TestPruneBackupsRejectsNegativeKeep(t *testing.T) {
 	root := t.TempDir()
 	seed(t, root, target, "{}\n")
 	seed(t, root, target+".bak.20240101-120000", "backup\n")
-	if _, err := apply.PruneBackups(root, target, -1); err == nil {
+	if _, err := apply.PruneBackups(root, target, -1, ""); err == nil {
 		t.Error("PruneBackups() with negative keep succeeded, want an error")
 	}
 	if got := read(t, root, target+".bak.20240101-120000"); got != "backup\n" {
@@ -469,7 +469,7 @@ func TestRestoreBackupsRecoversManifest(t *testing.T) {
 	}
 	// Simulate operator damage after a bad apply.
 	seed(t, root, target, "damaged bytes\n")
-	if err := apply.RestoreBackups(root, res.Backups); err != nil {
+	if err := apply.RestoreBackups(root, res.Backups, ""); err != nil {
 		t.Fatalf("RestoreBackups() unexpected error: %v", err)
 	}
 	if got := read(t, root, target); got != original {
@@ -478,7 +478,7 @@ func TestRestoreBackupsRecoversManifest(t *testing.T) {
 	if got := read(t, root, bak); got != original {
 		t.Errorf("RestoreBackups() consumed the backup sibling, want it kept:\n%s", got)
 	}
-	if err := apply.RestoreBackups(root, nil); err != nil {
+	if err := apply.RestoreBackups(root, nil, ""); err != nil {
 		t.Errorf("RestoreBackups(nil) unexpected error: %v", err)
 	}
 }
@@ -490,10 +490,263 @@ func TestRestoreFileRejectsNonBackup(t *testing.T) {
 	root := t.TempDir()
 	seed(t, root, target, "current\n")
 	seed(t, root, "other.txt", "unrelated\n")
-	if err := apply.RestoreFile(root, target, "other.txt"); err == nil {
+	if err := apply.RestoreFile(root, target, "other.txt", ""); err == nil {
 		t.Error("RestoreFile() copied an arbitrary file, want a pattern error")
 	}
 	if got := read(t, root, target); got != "current\n" {
 		t.Errorf("RestoreFile() modified the target on error:\n%s", got)
+	}
+}
+
+func TestApplyBackupDirRedirectsBackups(t *testing.T) {
+	t.Parallel()
+
+	const target = ".vscode/settings.json"
+	const existing = "{\"editor.tabSize\": 4}\n"
+	root := t.TempDir()
+	seed(t, root, target, existing)
+	plan := generate.Plan{Files: []generate.FileOp{
+		{Path: target, Content: []byte("{\"editor.tabSize\": 2, \"files.eol\": \"\\n\"}"), JSON: true},
+	}}
+	res, err := apply.Apply(root, plan, apply.Options{BackupDir: ".backups"})
+	if err != nil {
+		t.Fatalf("Apply() unexpected error: %v", err)
+	}
+	bak, ok := res.Backups[target]
+	if !ok || bak == "" {
+		t.Fatalf("Apply() result omits the backup entry for %s", target)
+	}
+	if !strings.HasPrefix(bak, ".backups/") || !strings.Contains(bak, "settings.json.bak.") {
+		t.Errorf("Apply() backup %q is not redirected into .backups/<base>.bak.*", bak)
+	}
+	if got := read(t, root, bak); got != existing {
+		t.Errorf("Apply() redirected backup is not the pre-write image:\n got:\n%s\nwant:\n%s", got, existing)
+	}
+	if siblings := backups(t, root, target); len(siblings) != 0 {
+		t.Errorf("Apply() left %d sibling backups, want zero with BackupDir set", len(siblings))
+	}
+	if got := read(t, root, target); !strings.Contains(got, `"files.eol"`) {
+		t.Errorf("Apply() did not write the merged target:\n%s", got)
+	}
+}
+
+func TestListBackupsInBackupDirIgnoresSiblings(t *testing.T) {
+	t.Parallel()
+
+	const target = "cfg/settings.json"
+	root := t.TempDir()
+	seed(t, root, target, "{}\n")
+	inDir := []string{
+		".backups/settings.json.bak.20240101-120000",
+		".backups/settings.json.bak.20240102-120000",
+		".backups/settings.json.bak.20240103-120000-2",
+	}
+	for _, rel := range inDir {
+		seed(t, root, rel, "{\"v\": 1}\n")
+	}
+	decoys := []string{
+		".backups/settings.json.bak.notes",
+		".backups/settings.json.bak.20240101-120000-draft",
+		".backups/other.txt",
+		"cfg/settings.json.bak.notes",
+	}
+	for _, rel := range decoys {
+		seed(t, root, rel, "user file\n")
+	}
+	const siblingExact = "cfg/settings.json.bak.20200101-000000"
+	seed(t, root, siblingExact, "sibling backup\n")
+
+	listed, err := apply.ListBackups(root, target, ".backups")
+	if err != nil {
+		t.Fatalf("ListBackups() unexpected error: %v", err)
+	}
+	if len(listed) != len(inDir) {
+		t.Fatalf("ListBackups() = %v, want exactly the %d redirected backups", listed, len(inDir))
+	}
+	for i, want := range inDir {
+		if listed[i] != want {
+			t.Errorf("ListBackups()[%d] = %s, want %s (oldest first)", i, listed[i], want)
+		}
+	}
+	siblings, err := apply.ListBackups(root, target, "")
+	if err != nil {
+		t.Fatalf("ListBackups() sibling unexpected error: %v", err)
+	}
+	if len(siblings) != 1 || siblings[0] != siblingExact {
+		t.Errorf("ListBackups() sibling = %v, want [%s] (redirected backups must not leak)", siblings, siblingExact)
+	}
+}
+
+func TestPruneBackupsInBackupDirKeepsNewest(t *testing.T) {
+	t.Parallel()
+
+	const target = "cfg/settings.json"
+	root := t.TempDir()
+	seed(t, root, target, "{}\n")
+	oldest := ".backups/settings.json.bak.20240101-120000"
+	middle := ".backups/settings.json.bak.20240102-120000"
+	newest := ".backups/settings.json.bak.20240103-120000"
+	for _, rel := range []string{oldest, middle, newest} {
+		seed(t, root, rel, "{\"v\": 1}\n")
+	}
+	decoys := []string{
+		".backups/settings.json.bak.notes",
+		".backups/settings.json.bak.20240101-120000-draft",
+	}
+	for _, rel := range decoys {
+		seed(t, root, rel, "user file\n")
+	}
+	const siblingExact = "cfg/settings.json.bak.20200101-000000"
+	seed(t, root, siblingExact, "sibling backup\n")
+
+	deleted, err := apply.PruneBackups(root, target, 1, ".backups")
+	if err != nil {
+		t.Fatalf("PruneBackups() unexpected error: %v", err)
+	}
+	if len(deleted) != 2 || deleted[0] != oldest || deleted[1] != middle {
+		t.Errorf("PruneBackups() deleted %v, want [%s %s] oldest first", deleted, oldest, middle)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(newest))); err != nil {
+		t.Errorf("PruneBackups() removed the newest backup %s: %v", newest, err)
+	}
+	for _, rel := range append(decoys, siblingExact) {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("PruneBackups() removed %s, want it spared: %v", rel, err)
+		}
+	}
+	if got := read(t, root, target); got != "{}\n" {
+		t.Errorf("PruneBackups() modified the target:\n%s", got)
+	}
+}
+
+func TestPruneBackupsInBackupDirZeroAndNegative(t *testing.T) {
+	t.Parallel()
+
+	const target = "cfg/settings.json"
+	const exact = ".backups/settings.json.bak.20240101-120000"
+	const decoy = ".backups/settings.json.bak.notes"
+
+	t.Run("keep zero prunes all", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		seed(t, root, target, "{}\n")
+		seed(t, root, exact, "backup\n")
+		seed(t, root, decoy, "user file\n")
+		deleted, err := apply.PruneBackups(root, target, 0, ".backups")
+		if err != nil {
+			t.Fatalf("PruneBackups() unexpected error: %v", err)
+		}
+		if len(deleted) != 1 || deleted[0] != exact {
+			t.Errorf("PruneBackups() deleted %v, want [%s]", deleted, exact)
+		}
+		if got := read(t, root, decoy); got != "user file\n" {
+			t.Error("PruneBackups() pruned the decoy, want it spared")
+		}
+	})
+
+	t.Run("negative keep errors without writes", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		seed(t, root, target, "{}\n")
+		seed(t, root, exact, "backup\n")
+		if _, err := apply.PruneBackups(root, target, -1, ".backups"); err == nil {
+			t.Error("PruneBackups() with negative keep succeeded, want an error")
+		}
+		if got := read(t, root, exact); got != "backup\n" {
+			t.Error("PruneBackups() deleted a backup on invalid input, want no writes")
+		}
+	})
+}
+
+func TestRestoreFileFromBackupDir(t *testing.T) {
+	t.Parallel()
+
+	const target = "notes.txt"
+	root := t.TempDir()
+	seed(t, root, target, "current\n")
+	seed(t, root, ".backups/notes.txt.bak.20240101-120000", "v1\n")
+	seed(t, root, ".backups/notes.txt.bak.20240102-120000", "v2\n")
+	seed(t, root, ".backups/notes.txt.bak.notes", "user file\n")
+	seed(t, root, "notes.txt.bak.20200101-000000", "sibling backup\n")
+
+	// Newest-per-target discovery through ListBackups, then revive.
+	listed, err := apply.ListBackups(root, target, ".backups")
+	if err != nil {
+		t.Fatalf("ListBackups() unexpected error: %v", err)
+	}
+	if len(listed) != 2 || listed[1] != ".backups/notes.txt.bak.20240102-120000" {
+		t.Fatalf("ListBackups() = %v, want the two redirected backups oldest first", listed)
+	}
+	if err := apply.RestoreFile(root, target, listed[1], ".backups"); err != nil {
+		t.Fatalf("RestoreFile() newest unexpected error: %v", err)
+	}
+	if got := read(t, root, target); got != "v2\n" {
+		t.Errorf("RestoreFile() newest target =\n%s\nwant v2", got)
+	}
+	// A specific older backup revives exactly that image.
+	if err := apply.RestoreFile(root, target, listed[0], ".backups"); err != nil {
+		t.Fatalf("RestoreFile() specific unexpected error: %v", err)
+	}
+	if got := read(t, root, target); got != "v1\n" {
+		t.Errorf("RestoreFile() specific target =\n%s\nwant v1", got)
+	}
+
+	cases := []struct {
+		name   string
+		backup string
+	}{
+		{"sibling backup rejected under BackupDir", "notes.txt.bak.20200101-000000"},
+		{"decoy rejected", ".backups/notes.txt.bak.notes"},
+		{"arbitrary file rejected", ".backups/other.txt"},
+	}
+	seed(t, root, ".backups/other.txt", "unrelated\n")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			before := read(t, root, target)
+			if err := apply.RestoreFile(root, target, tc.backup, ".backups"); err == nil {
+				t.Errorf("RestoreFile(%s) succeeded, want a guard error", tc.backup)
+			}
+			if got := read(t, root, target); got != before {
+				t.Errorf("RestoreFile(%s) modified the target on error", tc.backup)
+			}
+		})
+	}
+}
+
+func TestRestoreBackupsWithAbsoluteBackupDir(t *testing.T) {
+	t.Parallel()
+
+	const target = "notes.txt"
+	const original = "original bytes\n"
+	root := t.TempDir()
+	backupDir := t.TempDir()
+	seed(t, root, target, original)
+	plan := generate.Plan{Files: []generate.FileOp{
+		{Path: target, Content: []byte("updated bytes\n"), JSON: false},
+	}}
+	res, err := apply.Apply(root, plan, apply.Options{BackupDir: backupDir})
+	if err != nil {
+		t.Fatalf("Apply() unexpected error: %v", err)
+	}
+	bak, ok := res.Backups[target]
+	if !ok || bak == "" {
+		t.Fatalf("Apply() result omits the backup entry for %s", target)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(bak))); err != nil {
+		t.Fatalf("Apply() backup %s is not readable through the manifest: %v", bak, err)
+	}
+	seed(t, root, target, "damaged bytes\n")
+	if err := apply.RestoreBackups(root, res.Backups, backupDir); err != nil {
+		t.Fatalf("RestoreBackups() unexpected error: %v", err)
+	}
+	if got := read(t, root, target); got != original {
+		t.Errorf("RestoreBackups() target =\n%s\nwant the pre-write image:\n%s", got, original)
+	}
+	if got := read(t, root, bak); got != original {
+		t.Errorf("RestoreBackups() consumed the backup, want it kept:\n%s", got)
 	}
 }

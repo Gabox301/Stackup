@@ -11,8 +11,9 @@
 //
 // Backup retention: apply never prunes on its own. Same-second reruns
 // dedupe with a numeric suffix, so repeated applies accumulate
-// <name>.bak.<ts>[-N] siblings next to the target. Call PruneBackups to
-// drop old siblings and RestoreBackups to recover the pre-write images
+// <name>.bak.<ts>[-N] siblings next to the target (or inside
+// Options.BackupDir when set). Call PruneBackups to
+// drop old backups and RestoreBackups to recover the pre-write images
 // recorded in a Result (or ApplyError) Backups manifest. Overwrites preserve the
 // source file mode on both the target and its backup, so restrictive
 // permissions never widen through the backup copy; fresh files are
@@ -39,6 +40,10 @@ type Options struct {
 	// DryRun resolves pending writes and reports them without touching
 	// disk: no files created, no backups taken.
 	DryRun bool
+	// BackupDir redirects timestamped backups into one directory
+	// (absolute, or slash-separated relative to root). Empty preserves
+	// the sibling default: <name>.bak.<ts> next to each target.
+	BackupDir string
 }
 
 // Result describes one apply run.
@@ -135,7 +140,7 @@ func Apply(root string, p generate.Plan, opts Options) (Result, error) {
 		return Result{}, err
 	}
 	for i, fd := range changed {
-		backup, err := writeOne(root, fd)
+		backup, err := writeOne(root, fd, opts.BackupDir)
 		if err != nil {
 			applied := append([]string{}, res.Written...)
 			backups := make(map[string]string, len(res.Backups))
@@ -228,7 +233,7 @@ func validateParentDir(abs, rel string) error {
 // open, so no stat-then-read race can swap the bytes between the check
 // and the backup. Overwrites preserve the source mode on the target and
 // the backup; fresh files are created 0644.
-func writeOne(root string, fd diff.FileDiff) (string, error) {
+func writeOne(root string, fd diff.FileDiff, backupDir string) (string, error) {
 	abs := filepath.Join(root, filepath.FromSlash(fd.Path))
 	original, mode, ok, err := readExisting(abs, fd.Path)
 	if err != nil {
@@ -239,7 +244,7 @@ func writeOne(root string, fd diff.FileDiff) (string, error) {
 	}
 	var backup string
 	if ok {
-		backup, err = backupFile(root, abs, original, mode)
+		backup, err = backupFile(root, abs, original, mode, backupDir)
 		if err != nil {
 			return "", err
 		}
@@ -291,22 +296,44 @@ func readExisting(abs, rel string) (content []byte, mode os.FileMode, ok bool, e
 	return raw, fi.Mode().Perm(), true, nil
 }
 
+// resolveBackupDir maps a BackupDir setting to an absolute directory:
+// absolute values are used as-is, relative values resolve under root
+// (slash-separated, so plan-style paths stay portable). It must only be
+// called with a non-empty backupDir; empty means the sibling default.
+func resolveBackupDir(root, backupDir string) string {
+	if filepath.IsAbs(backupDir) {
+		return filepath.Clean(backupDir)
+	}
+	return filepath.Join(root, filepath.FromSlash(backupDir))
+}
+
 // backupFile copies original (already read from abs under one open; see
-// writeOne) to a timestamped sibling and returns the root-relative backup
-// path. Same-second reruns dedupe with a counter suffix. The backup
+// writeOne) to a timestamped backup and returns the root-relative backup
+// path. An empty backupDir keeps the sibling default (<name>.bak.<ts>
+// next to the target); a non-empty one redirects to
+// <dir>/<base>.bak.<ts> (flat by base name), creating the directory.
+// Same-second reruns dedupe with a counter suffix. The backup
 // inherits the source mode so restrictive permissions never widen through
-// the copy. Backups accumulate: apply keeps every sibling until the caller
+// the copy. Backups accumulate: apply keeps every backup until the caller
 // drops old ones with PruneBackups.
-func backupFile(root, abs string, original []byte, mode os.FileMode) (string, error) {
+func backupFile(root, abs string, original []byte, mode os.FileMode, backupDir string) (string, error) {
 	stamp := time.Now().UTC().Format(timeFormat)
-	candidate := abs + ".bak." + stamp
+	prefix := abs
+	if backupDir != "" {
+		dir := resolveBackupDir(root, backupDir)
+		if err := mkdirAllFunc(dir, 0o755); err != nil {
+			return "", fmt.Errorf("apply: create backup dir: %w", err)
+		}
+		prefix = filepath.Join(dir, filepath.Base(abs))
+	}
+	candidate := prefix + ".bak." + stamp
 	for i := 2; ; i++ {
 		if _, err := os.Stat(candidate); os.IsNotExist(err) {
 			break
 		} else if err != nil {
 			return "", fmt.Errorf("apply: stat backup: %w", err)
 		}
-		candidate = fmt.Sprintf("%s.bak.%s-%d", abs, stamp, i)
+		candidate = fmt.Sprintf("%s.bak.%s-%d", prefix, stamp, i)
 	}
 	if err := writeFileFunc(candidate, original, mode); err != nil {
 		return "", fmt.Errorf("apply: write backup: %w", err)
@@ -357,17 +384,23 @@ func isBackupSuffix(suffix string) bool {
 	return true
 }
 
-// ListBackups returns the timestamped backup siblings of target as
-// root-relative slash paths, oldest first. Only siblings matching exactly
+// ListBackups returns the timestamped backups of target as
+// root-relative slash paths, oldest first. An empty backupDir lists the
+// sibling default (next to the target); a non-empty one lists the
+// redirected <dir>/<base>.bak.* set. Only entries matching exactly
 // the backupFile pattern qualify; user files that merely share the
 // ".bak." prefix and non-regular files are skipped.
-func ListBackups(root, target string) ([]string, error) {
+func ListBackups(root, target, backupDir string) ([]string, error) {
 	abs := filepath.Join(root, filepath.FromSlash(target))
-	matches, err := filepath.Glob(abs + ".bak.*")
+	base := filepath.Base(abs)
+	pattern := abs + ".bak.*"
+	if backupDir != "" {
+		pattern = filepath.Join(resolveBackupDir(root, backupDir), base+".bak.*")
+	}
+	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("apply: list backups of %s: %w", target, err)
 	}
-	base := filepath.Base(abs)
 	var out []string
 	for _, m := range matches {
 		suffix, ok := strings.CutPrefix(filepath.Base(m), base+".bak.")
@@ -394,16 +427,18 @@ func ListBackups(root, target string) ([]string, error) {
 	return out, nil
 }
 
-// PruneBackups deletes backup siblings of target, keeping the newest keep.
-// A negative keep is an error; keep zero removes every backup sibling.
-// Only exact-pattern siblings qualify, so user files are never deleted.
+// PruneBackups deletes backups of target, keeping the newest keep.
+// A negative keep is an error; keep zero removes every backup.
+// An empty backupDir prunes the sibling default; a non-empty one prunes
+// inside the redirected directory. Only exact-pattern backups qualify,
+// so user files are never deleted.
 // It returns the deleted root-relative slash paths, oldest first; on a
 // remove failure it returns the paths deleted so far with the error.
-func PruneBackups(root, target string, keep int) ([]string, error) {
+func PruneBackups(root, target string, keep int, backupDir string) ([]string, error) {
 	if keep < 0 {
 		return nil, fmt.Errorf("apply: prune %s: keep must be >= 0, got %d", target, keep)
 	}
-	listed, err := ListBackups(root, target)
+	listed, err := ListBackups(root, target, backupDir)
 	if err != nil {
 		return nil, err
 	}
@@ -420,19 +455,28 @@ func PruneBackups(root, target string, keep int) ([]string, error) {
 	return deleted, nil
 }
 
-// RestoreFile copies the backup sibling back over target, preserving the
-// backup mode on the target. The backup must be an exact-pattern sibling
-// of the target; anything else fails instead of copying an arbitrary file
+// RestoreFile copies the backup back over target, preserving the
+// backup mode on the target. The backup must be an exact-pattern backup
+// of the target in the expected location: a sibling of the target when
+// backupDir is empty, inside the redirected directory otherwise;
+// anything else fails instead of copying an arbitrary file
 // over user data.
-func RestoreFile(root, target, backup string) error {
+func RestoreFile(root, target, backup, backupDir string) error {
 	targetAbs := filepath.Join(root, filepath.FromSlash(target))
 	backupAbs := filepath.Join(root, filepath.FromSlash(backup))
 	suffix, ok := strings.CutPrefix(filepath.Base(backupAbs), filepath.Base(targetAbs)+".bak.")
 	if !ok || !isBackupSuffix(suffix) {
 		return fmt.Errorf("apply: restore %s: %s is not a backup of %s", target, backup, target)
 	}
-	if filepath.Dir(backupAbs) != filepath.Dir(targetAbs) {
-		return fmt.Errorf("apply: restore %s: backup %s is not a sibling", target, backup)
+	wantDir := filepath.Dir(targetAbs)
+	if backupDir != "" {
+		wantDir = resolveBackupDir(root, backupDir)
+	}
+	if filepath.Dir(backupAbs) != wantDir {
+		if backupDir == "" {
+			return fmt.Errorf("apply: restore %s: backup %s is not a sibling", target, backup)
+		}
+		return fmt.Errorf("apply: restore %s: backup %s is not in the backup directory", target, backup)
 	}
 	content, mode, ok, err := readExisting(backupAbs, backup)
 	if err != nil {
@@ -452,16 +496,18 @@ func RestoreFile(root, target, backup string) error {
 
 // RestoreBackups recovers every entry of a Backups manifest (Result or
 // ApplyError) in deterministic target order, stopping at the first
-// failure. The manifest itself is unchanged, so a failure can be retried
-// after fixing the cause. A nil or empty manifest is a no-op.
-func RestoreBackups(root string, backups map[string]string) error {
+// failure. backupDir must match the directory the manifest entries live
+// in ("" for the sibling default). The manifest itself is unchanged, so
+// a failure can be retried after fixing the cause. A nil or empty
+// manifest is a no-op.
+func RestoreBackups(root string, backups map[string]string, backupDir string) error {
 	targets := make([]string, 0, len(backups))
 	for target := range backups {
 		targets = append(targets, target)
 	}
 	sort.Strings(targets)
 	for _, target := range targets {
-		if err := RestoreFile(root, target, backups[target]); err != nil {
+		if err := RestoreFile(root, target, backups[target], backupDir); err != nil {
 			return err
 		}
 	}

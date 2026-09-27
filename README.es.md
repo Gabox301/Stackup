@@ -122,6 +122,7 @@ stackup apply --force --path <proyecto>  # también sobrescribe existentes
 --force                 permite sobrescribir archivos (igual respalda)
 --yes, --non-interactive  omite todos los prompts (modo CI)
 --allow-unknown         continúa aunque no se detecte ningún stack
+--backup-dir <dir> / --keep N / --restore [archivo]  gestiona respaldos: redirige, poda, restaura
 ```
 
 #### Códigos de salida
