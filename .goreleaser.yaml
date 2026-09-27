@@ -47,7 +47,7 @@ changelog:
       - '^test:'
       - '^chore:'
 
-brews:
+homebrew_casks:
   - name: stackup
     repository:
       owner: Gabox301
@@ -59,6 +59,12 @@ brews:
     commit_author:
       name: goreleaserbot
       email: goreleaser@carlosbecker.com
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/stackup"]
+          end
 
 scoops:
   - name: stackup
