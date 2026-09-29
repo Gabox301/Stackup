@@ -44,7 +44,7 @@ Or install via a package manager (published from the next tagged release on):
 
 ```sh
 brew tap Gabox301/homebrew-stackup
-brew install stackup
+brew install --cask Gabox301/homebrew-stackup/stackup
 ```
 
 ```powershell
