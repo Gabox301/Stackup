@@ -39,6 +39,18 @@ O instalá la última versión con Go (requiere Go 1.27.1+):
 go install github.com/Gabox301/Stackup/cmd/stackup@latest
 ```
 
+O instalá con un gestor de paquetes (disponible desde el próximo release versionado):
+
+```sh
+brew tap Gabox301/homebrew-stackup
+brew install --cask Gabox301/homebrew-stackup/stackup
+```
+
+```powershell
+scoop bucket add scoop-bucket https://github.com/Gabox301/scoop-bucket
+scoop install scoop-bucket/stackup
+```
+
 ### Inicio rápido
 
 ```sh
